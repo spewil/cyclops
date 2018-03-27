@@ -1,4 +1,26 @@
+''' functions for converting things 
 
+'''
+
+import cv2 
+import numpy as np 
+
+# convert list of float arrays to an mp4 video 
+def arrays2video(arrays, filename):
+
+    if os.path.exists(video_filename):
+        os.remove(video_filename)
+
+    if len(arrays[0].shape) != 2:
+        raise ValueError('Image arrays must be 2D')
+    else:
+        height, width = arrays[0].shape
+
+    video = cv2.VideoWriter(filename=filename, fourcc=-1, fps=24, frameSize=(width,height), isColor=False)
+    for array in arrays:
+        video.write(array.astype('u1'))
+    cv2.destroyAllWindows()
+    video.release()
 
 def video2arrays(filename):
     # Create a VideoCapture object and read from input file
@@ -58,3 +80,4 @@ def pngs2mp4(image_folder,video_filename):
         num += 1
     cv2.destroyAllWindows()
     video.release()
+
