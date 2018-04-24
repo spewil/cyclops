@@ -1,0 +1,123 @@
+notes 
+
+after getting a python 3 environment running
+
+requirements:
+	pco_sdk
+	pco_camera 
+	numpy
+	ctypes
+	threading
+	tkinter
+	PIL
+	h5py - for data saving in chunks 
+
+old requirements:
+	X tifffile
+		this was tricky, have to run 'pip3 install --upgrade pyinstaller'
+		ended up being able to do this in PIL
+
+saving the data 
+
+	using .npy 
+	tifffile 'bigtiff' makes the multipage unviewable... this could be a software viewing issue 
+
+using memory efficiently 
+	
+	- i'm using this buffer variable (from python2) as a memory view of the data from the camera coming from C 
+	- the mistake i'm making here is then copying that data to a queue for analysis, writing to disk, and preview-- i have to build a queue, but if there is a way to point to this queue without copying in subsequent actions, that would be ideal. 
+		- maybe don't numpy-onize the buffers when saving, just save the raw buffer or transfer data from the queue (by popping) to the open file chunk 
+
+dtypes
+	showing the reshaped buffer array (with byteswapping) as a np.uint8, we get to our 0 (black) to 2^8 / 255 (white) scale for an image 
+
+for previewing, seems we can't do a view operation, have to copy
+
+TkInter example
+	https://gordonlesti.com/use-tkinter-without-mainloop/
+
+"The deque's append(), appendleft(), pop(), popleft(), and len(d) operations are thread-safe in CPython."
+
+Concurrency
+	https://www.pythonsheets.com/notes/python-concurrency.html
+
+	class myThread(threading.Thread):
+
+	def __init__(self, queue):
+		threading.Thread.__init__(self)
+		self.queue = queue
+
+	def run():
+		while True:
+			...
+			queue.pop()
+
+	t = myThread(queue)
+	t.start()
+	# calls run 
+
+	t = threading.Thread(target = my_function)
+	# replaces run()
+
+
+	m = threading.Lock() mutual exclusion
+
+	m.acquire()
+	try:
+		# critical statements  
+	finally:
+		m.release()
+
+	or
+
+	with m: 
+		# critical statements 
+
+	~~
+
+	e = threading.Event()
+	e.isSet() # True if event is set 
+	e.set()
+	e.clear()
+	e.wait()
+
+	Processes don't share memory, they are isolated
+		no locks
+		have to use pipes, etc to pass messages 
+
+
+	deque is threadsafe for append and popleft() -- possibly for all four in 3.x
+
+thread values
+
+	any combo of Daemon=True and join() seems to work 
+
+	I think setting Daemon to true means when the main program finishes, 
+	the Damon threads are killed 
+
+	in our case, we're breaking the threads manually, but in future we
+	might want a daemon thread cleaning the cue regardless of the preview
+	state (an option where we can turn the preview on and off with argparse)
+
+	right now, the whole program depends on the preview object being alive, 
+	the flag for which is 'sync'-- let's change this to run everything from the 
+	get-go, then an option to turn preview on/off and keep taking data 
+
+	for this, we would need daemon processes to run regardless of the 
+	main program
+	    perhaps a recursive 'input()' call to toggle? 
+
+
+	Some threads do background tasks, like sending keepalive packets, 
+	or performing periodic garbage collection, or whatever. These are only 
+	useful when the main program is running, and it's okay to kill them 
+	off once the other, non-daemon, threads have exited.
+
+	Without daemon threads, you'd have to keep track of them, 
+	and tell them to exit, before your program can completely quit. 
+	By setting them as daemon threads, you can let them run and 
+	forget about them, and when your program quits, any daemon threads 
+	are killed automatically.
+
+	-Chris Jester-Young, SO 
+
