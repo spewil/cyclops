@@ -58,6 +58,7 @@ class sdk:
         error = self.SC2_Cam.PCO_ResetLib(self.camera_handle)
         return error
 
+
     def open_camera(self):
         self.SC2_Cam.PCO_OpenCamera.argtypes = [C.POINTER(C.c_void_p), C.c_uint16]
         error = self.SC2_Cam.PCO_OpenCamera(self.camera_handle, 0)
@@ -71,13 +72,47 @@ class sdk:
     def set_roi(self, wRoiX0, wRoiY0, wRoiX1, wRoiY1):
         self.SC2_Cam.PCO_SetROI.argtypes = [C.c_void_p, C.c_uint16, C.c_uint16, C.c_uint16, C.c_uint16]
         error = self.SC2_Cam.PCO_SetROI(self.camera_handle, wRoiX0, wRoiY0, wRoiX1, wRoiY1)
-        return error
+        return error                                                             
 
-    # SET FRAMERATE 
-    # def set_framerate(self, mode, framerate, exposure):
-    #     self.SC2_Cam.PCO_SetFrameRate.argtypes = [C.c_void_p, ??? ]
-    #     error = self.SC2_Cam.PCO_SetFrameRate(self.camera_handle, mode, framerate, exposure)
-    #     return error                                                                
+    # -------------------------------------------------------------------------
+    # 2.6.8 PCO_GetFrameRate
+    # -------------------------------------------------------------------------
+    def get_frame_rate(self):
+        self.SC2_Cam.PCO_GetFrameRate.argtypes = [C.c_void_p, C.POINTER(C.c_uint16), C.POINTER(C.c_uint32), C.POINTER(C.c_uint32)]
+        wFrameRateStatus = C.c_uint16()
+        dwFrameRate = C.c_uint32()
+        dwFrameRateExposure = C.c_uint32()
+        
+        error = self.SC2_Cam.PCO_GetFrameRate(self.camera_handle, wFrameRateStatus, dwFrameRate, dwFrameRateExposure)
+        
+        ret = {}
+        if error == 0:
+            ret.update({'status': wFrameRateStatus.value})
+            ret.update({'frame rate mHz':dwFrameRate.value})
+            ret.update({'exposure time ns':dwFrameRateExposure.value})
+        
+        return error, ret
+
+    # -------------------------------------------------------------------------
+    # 2.6.9 PCO_SetFrameRate
+    # -------------------------------------------------------------------------
+    def set_frame_rate(self, frame_rate_mHz, exposure_time_ns):
+        self.SC2_Cam.PCO_SetFrameRate.argtypes = [C.c_void_p, C.POINTER(C.c_uint16), C.c_uint16, C.POINTER(C.c_uint32), C.POINTER(C.c_uint32)]
+        wFrameRateStatus = C.c_uint16()
+        wFrameRateMode = C.c_uint16()
+        dwFrameRate = C.c_uint32(frame_rate_mHz)
+        dwFrameRateExposure = C.c_uint32(exposure_time_ns)
+
+        error = self.SC2_Cam.PCO_SetFrameRate(self.camera_handle, wFrameRateStatus, wFrameRateMode, dwFrameRate, dwFrameRateExposure)
+
+        ret = {}
+        if error == 0:
+            ret.update({'status': wFrameRateStatus.value})
+            ret.update({'mode': wFrameRateMode.value})
+            ret.update({'frame rate mHz': dwFrameRate.value})
+            ret.update({'exposure time ns': dwFrameRateExposure.value})
+
+        return error, ret
 
     def arm(self):
         self.SC2_Cam.PCO_ArmCamera.argtypes = [C.c_void_p]
@@ -100,9 +135,9 @@ class sdk:
         error = self.SC2_Cam.PCO_ResetSettingsToDefault(self.camera_handle)
         return error
 
-    def set_delay_exposure_time(self, delay, exposure):
+    def set_delay_exposure_time(self, delay, exposure_time_ns):
         self.SC2_Cam.PCO_SetDelayExposureTime.argtypes = [C.c_void_p, C.c_uint32, C.c_uint32, C.c_uint16, C.c_uint16]
-        error = self.SC2_Cam.PCO_SetDelayExposureTime(self.camera_handle, delay, exposure, 2, 2)
+        error = self.SC2_Cam.PCO_SetDelayExposureTime(self.camera_handle, delay, exposure_time_ns, 2, 2)
         return error
 
     def set_trigger_mode(self, trigger):

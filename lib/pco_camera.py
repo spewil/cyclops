@@ -7,7 +7,7 @@ class camera:
 
     __cam = pco_sdk.sdk()
 
-    def __init__(self, roi_tuple, exposureMs):
+    def __init__(self, x0, y0, x1, y1, frame_rate_mHz, exposure_time_ns):
 
         error = self.__cam.reset_lib()
         print("reset lib:", self.__cam.get_error_text(error))
@@ -19,10 +19,17 @@ class camera:
             print("set recording state:", self.__cam.get_error_text(error))
             error = self.__cam.reset_settings_to_default()
             print("reset settings to default:", self.__cam.get_error_text(error))
-            error = self.__cam.set_roi(*roi_tuple)
+            error = self.__cam.set_roi(x0, y0, x1, y1)
             print("set roi:", self.__cam.get_error_text(error))
-            error = self.__cam.set_delay_exposure_time(0, exposureMs)
-            print("set delay exposure time:", self.__cam.get_error_text(error))
+            # error = self.__cam.set_delay_exposure_time(0, exposure_time_ns//1000)
+            # print("set delay exposure time:", self.__cam.get_error_text(error))
+
+            error, ret = self.__cam.set_frame_rate(frame_rate_mHz, exposure_time_ns)
+            print("desired values: ", "framerate_mHz: ",frame_rate_mHz, "exposure_ns", exposure_time_ns)
+
+            error, ret = self.__cam.get_frame_rate()
+            print("resulting values: ", "framerate_mHz: ", ret["frame rate mHz"], "exposure_ns", ret["exposure time ns"])
+
             error = self.__cam.set_trigger_mode(0)
             print("set trigger mode:", self.__cam.get_error_text(error))
             error = self.__cam.arm()
@@ -45,7 +52,6 @@ class camera:
 
     def get_image(self, x0, y0, x1, y1):
 
-        # error, buffer = self.__cam.recorder_copy_image(0, 1, 1, x, y)
         error, buffer = self.__cam.recorder_copy_image(0, x0, y0, x1, y1)
         return buffer
 

@@ -13,6 +13,12 @@ import pco_camera
 import controller 
 from tools import compute_ROI
 
+class MesoLoop():
+
+    def __init__(self):
+
+        
+
 def initialize_camera():
 
     # stuff 
@@ -27,8 +33,7 @@ def populate_queues(camera, x0, y0, x1, y1, exposure_time):
     while sync is 1:
 
         buffer = camera.get_image(x0, y0, x1, y1)
-
-        # this cannot collide! 
+        
         save_queue.append(buffer)
 
     camera.close()
@@ -60,6 +65,10 @@ def preview_frame(w, h):
     global buffer 
     global sync
 
+    # what I want is something like:
+    # if preview_thread.isAlive(): OR if dry_run_mode: 
+        # do everything normally, pointing at 
+
     while sync is 1:
 
         input_frame = np.asarray(buffer).reshape(h, w)
@@ -84,16 +93,17 @@ def pop_images():
     while True:
         if save_queue:
             save_queue.popleft()
-
-        if not save_queue and sync is 0:
-            print('BREAK')
+        else:
+            print('queue is empty! length = ', len(save_queue))
+            
             break
+
 
 def write_images_to_disk(image_folder_path):
 
     global save_queue
 
-    image_path = image_folder_path + 'images4_25_3.npy'
+    image_path = image_folder_path + 'images.npy'
 
     if os.path.exists(image_path):
         raise ValueError('This file already exists! Designate new .npy filename.')
@@ -110,8 +120,8 @@ def write_images_to_disk(image_folder_path):
             if save_queue:
                 # grab the most recent buffer 
                 oldest_buffer = save_queue.popleft()
-                # oldest_buffer = np.asarray(oldest_buffer).byteswap(True)
-                np.save(f, oldest_buffer)#.astype(np.uint8, copy=False))
+                oldest_buffer = np.asarray(oldest_buffer).byteswap(True)
+                np.save(f, oldest_buffer.astype(np.uint8, copy=False))
 
             # if the queue is empty
             else:
@@ -125,8 +135,7 @@ if __name__ == '__main__':
     x0 = 0
     x1 = 2560
     h = 2160
-    exposure_time = int(1e7) # nanoseconds? 0.01sec
-    framerate = int(40e3) # milliHz? 40Hz 
+    exposure_time = 15 # milliseconds
 
     threshold = 100.
 
@@ -135,7 +144,7 @@ if __name__ == '__main__':
     
     save = 0
     preview = 1
-    show_control = 0
+    show_control = 1
 
     roi_tuple = compute_ROI(x0,x1,h)
     w = roi_tuple[2] - roi_tuple[0] + 1
@@ -143,7 +152,7 @@ if __name__ == '__main__':
     print(roi_tuple)
 
     # make the camera 
-    camera = pco_camera.camera(*roi_tuple, framerate, exposure_time)
+    camera = pco_camera.camera(roi_tuple, exposure_time)
 
     # create buffer
     buffer = (ctypes.c_uint16 * (w*h))()
@@ -151,6 +160,7 @@ if __name__ == '__main__':
     save_queue = deque([buffer])
 
     sync = 1
+    view_lock = Lock()
 
     threads = []
 
