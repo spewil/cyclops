@@ -121,3 +121,23 @@ thread values
 
 	-Chris Jester-Young, SO 
 
+multiple queues
+
+	adjust which queues to build with flags 
+	lots of args-- can we parse kwargs? 
+		what is the basic behavior?
+		have modes 
+			dry-run mode previews without saving
+			experiment mode 
+
+input control 
+	input thread? 
+		number input 
+
+have to instantiate global variables in place where function is called 
+
+single camera class makes sense because 
+	no more global variables 
+	handle exceptions better 
+		make populate stop if there's an error anywhere!!!
+		

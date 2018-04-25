@@ -13,64 +13,87 @@ import pco_camera
 import controller 
 from tools import compute_ROI
 
-def populate_queue(camera, x0, y0, x1, y1, exposure_time):
+def initialize_camera():
 
-    global queue
-    global sync 
+    # stuff 
+    pass
+
+def populate_queues(camera, x0, y0, x1, y1, exposure_time):
+
+    global buffer
+    global sync
+    global save_queue
 
     while sync is 1:
 
-        # slow this down as a lower framerate hack
-        time.sleep(.01) 
+        buffer = camera.get_image(x0, y0, x1, y1)
+        
+        save_queue.append(buffer)
 
-        queue.append(camera.get_image(x0, y0, x1, y1))
- 
     camera.close()
+
+def output_control(w, h, threshold):
+
+    global buffer
+    global sync
+
+    output_frame = np.zeros((h,w,3))
+
+    while sync is 1:
+
+        input_frame = np.asarray(buffer).reshape(h, w)
+        input_frame.byteswap(True)
+
+        output_frame[:,:,0] = controller.BangBang(input_frame.astype(np.uint8, copy=False), threshold)
+        # cv2.namedWindow('Control Output', cv2.WINDOW_AUTOSIZE) 
+        cv2.imshow('Control Output', output_frame)
+            
+        if cv2.waitKey(1) == 27:
+            sync = 0
+
+    # close windows 
+    cv2.destroyAllWindows()
 
 def preview_frame(w, h):
 
-    global queue 
+    global buffer 
     global sync
-    global view_lock
+
+    # what I want is something like:
+    # if preview_thread.isAlive(): OR if dry_run_mode: 
+        # do everything normally, pointing at 
 
     while sync is 1:
 
-        time.sleep(1)
-
-        ###################
-        view_lock.acquire()         
-        ###################
-
-        np_array = np.asarray(queue[-1]).reshape(h, w)
-        np_array.byteswap(True)
-        np_array = np_array.astype(np.uint8, copy=False)
-
-        cv2.imshow('Preview', np_array)
+        input_frame = np.asarray(buffer).reshape(h, w)
+        input_frame.byteswap(True)
+        input_frame = input_frame.astype(np.uint8, copy=False)
+        # cv2.namedWindow('Preview', cv2.WINDOW_AUTOSIZE) 
+        cv2.imshow('Preview', input_frame)
 
         if cv2.waitKey(1) == 27:
             sync = 0
-        
-        ###################
-        view_lock.release()
-        ###################
 
     # close windows
     cv2.destroyAllWindows()
 
+
 def pop_images():
 
-    global queue
+    global save_queue
     global sync
 
-    while sync is 1:
-        
-        if len(queue) > 5:
-            queue.popleft()
+    # pops frames out of the queue one by one without saving
+    while True:
+        if save_queue:
+            save_queue.popleft()
+        else:
+            break
+
 
 def write_images_to_disk(image_folder_path):
 
-    global queue
-    global sync
+    global save_queue
 
     image_path = image_folder_path + 'images.npy'
 
@@ -85,56 +108,17 @@ def write_images_to_disk(image_folder_path):
 
         while True:
 
-            # if populate is alive 
-            if sync is 1: 
-                # keep the queue at least five buffer frames
-                if len(queue) > 5:
-                    # grab the most recent buffer 
-                    oldest_buffer = queue.popleft()
-                    oldest_buffer = np.asarray(oldest_buffer).byteswap(True)
-                    np.save(f, oldest_buffer.astype(np.uint8, copy=False))
+            # if the queue is not empty
+            if save_queue:
+                # grab the most recent buffer 
+                oldest_buffer = save_queue.popleft()
+                oldest_buffer = np.asarray(oldest_buffer).byteswap(True)
+                np.save(f, oldest_buffer.astype(np.uint8, copy=False))
 
-            # if populate is dead 
+            # if the queue is empty
             else:
-                # try to empty the queue
-                if len(queue) > 0:
-                    # grab the most recent buffer 
-                    oldest_buffer = queue.popleft()
-                    oldest_buffer = np.asarray(oldest_buffer).byteswap(True)
-                    np.save(f, oldest_buffer.astype(np.uint8, copy=False))
-
-                # if the queue is empty
-                else:
-                    print('queue is of length: ', len(queue))
-                    break            
-
-def output_control(w, h, threshold):
-
-    global queue
-    global sync
-    global view_lock
-
-    output = np.zeros((h,w,3))
-    while sync is 1:
-
-        ###################
-        view_lock.acquire()
-        ###################
-
-        np_array = np.asarray(queue[-1]).reshape(h, w)
-        np_array.byteswap(True)
-
-        output[:,:,0] = controller.BangBang(np_array.astype(np.uint8, copy=False), threshold) 
-        cv2.imshow('Control Output', output)
-        if cv2.waitKey(1) == 27:
-            sync = 0
-
-        ###################
-        view_lock.release()
-        ###################
-
-    # close windows 
-    cv2.destroyAllWindows()
+                print('queue is empty! length = ', len(save_queue))
+                break         
 
 
 if __name__ == '__main__':
@@ -164,14 +148,15 @@ if __name__ == '__main__':
 
     # create buffer
     buffer = (ctypes.c_uint16 * (w*h))()
-    queue = deque([buffer])
+
+    save_queue = deque([buffer])
 
     sync = 1
     view_lock = Lock()
 
     threads = []
 
-    populate_thread = Thread(target=populate_queue, args=(camera, *roi_tuple, exposure_time))
+    populate_thread = Thread(target=populate_queues, args=(camera, *roi_tuple, exposure_time))
     threads.append(populate_thread)
 
     if preview:
