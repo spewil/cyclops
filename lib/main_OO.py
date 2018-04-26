@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import ctypes
-from threading import Thread, Lock
+from threading import Thread
 import cv2 
 import numpy as np
 import pathlib
@@ -11,177 +11,212 @@ import os
 
 import pco_camera
 import controller 
-from tools import compute_ROI
 
-class MesoLoop():
+def threaded(fn):
+    def wrapper(*args, **kwargs):
+        thread = Thread(target=fn, args=args, kwargs=kwargs)
+        # thread.start()
+        return thread
+    # function handle
+    return wrapper
 
-    def __init__(self):
+def compute_ROI(x0, x1, h):
 
-        
+    if x1 <= x0:
+        raise Error("ROI must have x1 > x0")
+    elif x1-x0 < 160:
+        raise Error("Width must be greater than 160")
 
-def initialize_camera():
+    # Ensure coords are bounded properly
+    x0 = max(0, x0 - x0%160) + 1 
+    x1 = min(2560, x1 + 160 - x1%160)
 
-    # stuff 
-    pass
+    # make h even 
+    if h%2 is not 0:
+        h += 1
 
-def populate_queues(camera, x0, y0, x1, y1, exposure_time):
+    # compute the y coords (must be symmetric for pco.edge)
+    h_2 = h // 2
 
-    global buffer
-    global sync
-    global save_queue
+    # height must be even, minimum is 16 
+    # x values are multiples of 160, minimum is 160
 
-    while sync is 1:
+    half_y_max = 2160 // 2
+    y0 = half_y_max - h_2 + 1
+    y1 = half_y_max + h_2
 
-        buffer = camera.get_image(x0, y0, x1, y1)
-        
-        save_queue.append(buffer)
+    return (x0,y0,x1,y1)
 
-    camera.close()
+class Cyclops():
 
-def output_control(w, h, threshold):
-
-    global buffer
-    global sync
-
-    output_frame = np.zeros((h,w,3))
-
-    while sync is 1:
-
-        input_frame = np.asarray(buffer).reshape(h, w)
-        input_frame.byteswap(True)
-
-        output_frame[:,:,0] = controller.BangBang(input_frame.astype(np.uint8, copy=False), threshold)
-        # cv2.namedWindow('Control Output', cv2.WINDOW_AUTOSIZE) 
-        cv2.imshow('Control Output', output_frame)
-            
-        if cv2.waitKey(1) == 27:
-            sync = 0
-
-    # close windows 
-    cv2.destroyAllWindows()
-
-def preview_frame(w, h):
-
-    global buffer 
-    global sync
-
-    # what I want is something like:
-    # if preview_thread.isAlive(): OR if dry_run_mode: 
-        # do everything normally, pointing at 
-
-    while sync is 1:
-
-        input_frame = np.asarray(buffer).reshape(h, w)
-        input_frame.byteswap(True)
-        input_frame = input_frame.astype(np.uint8, copy=False)
-        # cv2.namedWindow('Preview', cv2.WINDOW_AUTOSIZE) 
-        cv2.imshow('Preview', input_frame)
-
-        if cv2.waitKey(1) == 27:
-            sync = 0
-
-    # close windows
-    cv2.destroyAllWindows()
+    # initialize the camera 
+    def __init__(self, threshold, x0, x1, h, frame_rate, exposure_time, image_path=None):
 
 
-def pop_images():
+        self.roi_tuple = compute_ROI(x0,x1,h)
+        print('Desired ROI: ', self.roi_tuple)
 
-    global save_queue
-    global sync
+        self.w = self.roi_tuple[2] - self.roi_tuple[0] + 1
+        self.h = h 
 
-    # pops frames out of the queue one by one without saving
-    while True:
-        if save_queue:
-            save_queue.popleft()
+        self.threshold = threshold
+
+        # change this to combine pco_camera
+        self.camera = pco_camera.camera(frame_rate, exposure_time, *self.roi_tuple)
+
+        self.buffer = (ctypes.c_uint16 * (self.w*self.h))()
+        self.sync = 1
+
+        # call the threads from here to start them 
+        self.threads  = []
+
+        # set up threads
+        # parse kwargs 
+        if image_path is not None:
+
+            self.save = True
+
+            self.image_path = image_path
+            self.image_folder, self.image_name = os.path.split(os.path.abspath(self.image_path))
+
+            if os.path.exists(image_path):
+                sync = 0
+                raise ValueError('This file already exists in this directory! Designate new .npy filename.')
+
+            # make the folder if it doesn't exist
+            pathlib.Path(self.image_folder).mkdir(parents=True, exist_ok=True)
+
+            self.save_queue = deque([self.buffer])
+
+            w = self.write_images_to_disk()
+            self.threads.append(w)
+
         else:
-            print('queue is empty! length = ', len(save_queue))
-            
-            break
+            self.save = False
 
+        self.control_queue = deque([self.buffer], maxlen=1)
+        self.preview_queue = deque([self.buffer], maxlen=1)
 
-def write_images_to_disk(image_folder_path):
+        a = self.append_queues()
+        self.threads.append(a)
 
-    global save_queue
+        c = self.output_control(self.threshold)
+        self.threads.append(c)
 
-    image_path = image_folder_path + 'images.npy'
+        p = self.preview_frame()
+        self.threads.append(p)
 
-    if os.path.exists(image_path):
-        raise ValueError('This file already exists! Designate new .npy filename.')
+        for thread in self.threads:
+            thread.start()        
+        # finish 
+        for thread in self.threads:
+            thread.join()
 
-    # make the folder path if it doesn't exist
-    pathlib.Path(image_folder_path).mkdir(parents=True, exist_ok=True)
+    @threaded
+    def append_queues(self):
 
-    # open a file for saving 
-    with open(image_path, 'ab') as f:
+        while self.sync is 1:
+
+            self.buffer = self.camera.get_image(*self.roi_tuple)
+
+            # print('appended buffer id: %i' %id(self.buffer))
+
+            # artificially lower framerate 
+            time.sleep(0.02)
+            if self.save:
+                self.save_queue.append(self.buffer)
+
+            self.control_queue.append(self.buffer)
+            self.preview_queue.append(self.buffer)
+
+        self.camera.close()
+
+    @threaded
+    def output_control(self, threshold):
+
+        output_frame = np.zeros((self.h,self.w,3))
+        
+        while True:
+
+            if self.control_queue:
+
+                control_frame = self.buffer
+                # print('control buffer id: %i' %id(control_frame))
+
+                input_frame = np.asarray(self.buffer).reshape(self.h, self.w)
+                input_frame.byteswap(True)
+
+                output_frame[:,:,0] = controller.BangBang(input_frame.astype(np.uint8, copy=False), threshold)
+                cv2.imshow('Control Output', output_frame)
+                    
+                if cv2.waitKey(1) == 27:
+                    self.sync = 0
+                    break
+
+        # close windows 
+        cv2.destroyAllWindows()
+
+    @threaded
+    def preview_frame(self):
 
         while True:
 
-            # if the queue is not empty
-            if save_queue:
-                # grab the most recent buffer 
-                oldest_buffer = save_queue.popleft()
-                oldest_buffer = np.asarray(oldest_buffer).byteswap(True)
-                np.save(f, oldest_buffer.astype(np.uint8, copy=False))
+            if self.preview_queue:
 
-            # if the queue is empty
-            else:
-                print('queue is empty! length = ', len(save_queue))
-                break         
+                # copy this so it doesn't interfere with the control
+                preview_frame = (ctypes.c_uint16 * (self.w*self.h)).from_buffer_copy() #self.preview_queue.pop()
+                # print('previewed buffer id: %i' %id(preview_frame))
 
+                input_frame = np.array(preview_frame).reshape(self.h, self.w)
+                input_frame.byteswap(True)
+
+                input_frame = input_frame.astype(np.uint8, copy=False)
+                cv2.imshow('Preview', input_frame)
+
+                if cv2.waitKey(1) == 27:
+                    self.sync = 0
+                    break
+
+        # close windows
+        cv2.destroyAllWindows()
+
+    @threaded
+    def write_images_to_disk(self):
+
+        # open a file for saving 
+        with open(self.image_path, 'ab') as f:
+
+            while True:
+
+                # if the queue is not empty
+                if self.save_queue:
+
+                    print('Saving an image...')
+
+                    # grab the most recent buffer 
+                    oldest_buffer = self.save_queue.popleft()
+                    oldest_buffer = np.asarray(oldest_buffer).byteswap(True)
+                    np.save(f, oldest_buffer.astype(np.uint8, copy=False))
+
+                # if the queue is empty and experiment no longer running
+                if not self.save_queue and not self.sync:
+                    print('Save queue is empty! Length = ', len(self.save_queue))
+                    break
 
 if __name__ == '__main__':
 
     # user info 
     x0 = 0
-    x1 = 2560
-    h = 2160
-    exposure_time = 15 # milliseconds
+    x1 = 500
+    h = 500
 
+    exposure_time = int(1e7)# nanosec
+    frame_rate = int(1e4) # milliHz
     threshold = 100.
 
-    experiment_name = '4_24' #input('Enter experiment name: ')
-    image_folder_path = 'C:/Users/Kelly_group01/Documents/'+experiment_name+'/'
-    
-    save = 0
-    preview = 1
-    show_control = 1
+    image_name = 'test_image.npy'
+    folder_name = '4_26' #input('Enter experiment name: ')
+    image_path = 'C:/Users/Kelly_group01/Documents/'+folder_name+'/'+image_name
 
-    roi_tuple = compute_ROI(x0,x1,h)
-    w = roi_tuple[2] - roi_tuple[0] + 1
-
-    print(roi_tuple)
-
-    # make the camera 
-    camera = pco_camera.camera(roi_tuple, exposure_time)
-
-    # create buffer
-    buffer = (ctypes.c_uint16 * (w*h))()
-
-    save_queue = deque([buffer])
-
-    sync = 1
-    view_lock = Lock()
-
-    threads = []
-
-    populate_thread = Thread(target=populate_queues, args=(camera, *roi_tuple, exposure_time))
-    threads.append(populate_thread)
-
-    if preview:
-        preview_thread = Thread(target=preview_frame, args=(w, h))
-        threads.append(preview_thread)
-
-    if save:
-        consumer_thread = Thread(target=write_images_to_disk, args=(image_folder_path,))
-        threads.append(consumer_thread)
-    else:
-        consumer_thread = Thread(target=pop_images)
-        threads.append(consumer_thread)       
-
-    if show_control:
-        output_thread = Thread(target=output_control, args=(w, h, threshold))
-        threads.append(output_thread)
-
-    [thread.start() for thread in threads]
-
-    [thread.join() for thread in threads]
+    # def __init__(self, threshold, x0, x1, h, frame_rate, exposure_time, image_path=None):
+    experiment = Cyclops(threshold, x0, x1, h, frame_rate, exposure_time, image_path=image_path)

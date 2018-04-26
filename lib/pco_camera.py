@@ -7,7 +7,7 @@ class camera:
 
     __cam = pco_sdk.sdk()
 
-    def __init__(self, x0, y0, x1, y1, frame_rate_mHz, exposure_time_ns):
+    def __init__(self, frame_rate_mHz, exposure_time_ns, x0, y0, x1, y1):
 
         error = self.__cam.reset_lib()
         print("reset lib:", self.__cam.get_error_text(error))
