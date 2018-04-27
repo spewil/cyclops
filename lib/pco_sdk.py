@@ -12,8 +12,10 @@ class sdk:
 
     def __init__(self):
 
+        # self.SC2_Cam = C.windll.LoadLibrary("C:/Program Files (x86)/Digital Camera Toolbox/pco.runtime/bin64/SC2_Cam.dll")
         self.SC2_Cam = C.windll.LoadLibrary("./dll/SC2_Cam.dll")
         self.SC2_Cam.PCO_ResetLib()
+        # self.PCO_Recorder = C.windll.LoadLibrary("C:/Program Files (x86)/Digital Camera Toolbox/pco.runtime/bin64/PCO_Recorder.dll")
         self.PCO_Recorder = C.windll.LoadLibrary("./dll/PCO_Recorder.dll")
 
     def recorder_create(self):
@@ -58,7 +60,6 @@ class sdk:
         error = self.SC2_Cam.PCO_ResetLib(self.camera_handle)
         return error
 
-
     def open_camera(self):
         self.SC2_Cam.PCO_OpenCamera.argtypes = [C.POINTER(C.c_void_p), C.c_uint16]
         error = self.SC2_Cam.PCO_OpenCamera(self.camera_handle, 0)
@@ -69,10 +70,60 @@ class sdk:
         error = self.SC2_Cam.PCO_CloseCamera(self.camera_handle)
         return error
 
+    def get_binning(self):
+        self.SC2_Cam.PCO_GetBinning.argtypes = [C.c_void_p, C.POINTER(C.c_uint16), C.POINTER(C.c_uint16)]
+        wBinHorz = C.c_uint16()
+        wBinVert = C.c_uint16()
+
+        error = self.SC2_Cam.PCO_GetBinning(self.camera_handle, wBinHorz, wBinVert)
+
+        ret = {}
+        if error == 0:
+            ret.update({'x_binning': wBinHorz.value})
+            ret.update({'y_binning': wBinVert.value})
+        
+        return error, ret
+
+    def set_binning(self, x_binning, y_binning):
+        self.SC2_Cam.PCO_SetBinning.argtypes = [C.c_void_p, C.c_uint16, C.c_uint16]
+        wBinHorz = C.c_uint16(x_binning)
+        wBinVert = C.c_uint16(y_binning)
+
+        error = self.SC2_Cam.PCO_SetBinning(self.camera_handle, wBinHorz, wBinVert)
+
+        ret = {}
+        if error == 0:
+            ret.update({'x_binning': wBinHorz.value})
+            ret.update({'y_binning': wBinVert.value})
+        
+        return error, ret
+
     def set_roi(self, wRoiX0, wRoiY0, wRoiX1, wRoiY1):
         self.SC2_Cam.PCO_SetROI.argtypes = [C.c_void_p, C.c_uint16, C.c_uint16, C.c_uint16, C.c_uint16]
         error = self.SC2_Cam.PCO_SetROI(self.camera_handle, wRoiX0, wRoiY0, wRoiX1, wRoiY1)
-        return error                                                             
+        return error   
+
+    def get_roi(self):
+        self.SC2_Cam.PCO_GetROI.argtypes = [C.c_void_p, C.POINTER(C.c_uint16)
+        , C.POINTER(C.c_uint16)
+        , C.POINTER(C.c_uint16)
+        , C.POINTER(C.c_uint16)
+        ]
+        wRoiX0 = C.c_uint16()
+        wRoiY0 = C.c_uint16()
+        wRoiX1 = C.c_uint16()
+        wRoiY1 = C.c_uint16()
+
+        error = self.SC2_Cam.PCO_GetROI(self.camera_handle, wRoiX0, wRoiY0, wRoiX1, wRoiY1)
+
+        ret = {}
+        if error == 0:
+            ret.update({'x0': wRoiX0.value})
+            ret.update({'y0': wRoiY0.value})
+            ret.update({'x1': wRoiX1.value})
+            ret.update({'y1': wRoiY1.value})
+
+        return error, ret                                                          
 
     # -------------------------------------------------------------------------
     # 2.6.8 PCO_GetFrameRate
@@ -128,7 +179,7 @@ class sdk:
         for i in range(100):
             temp_list.append(buffer[i])
         output_string = bytes.join(b'', temp_list).decode('ascii')
-        return output_string.strip("\0")
+        return output_string.strip("/0")
 
     def reset_settings_to_default(self):
         self.SC2_Cam.PCO_ResetSettingsToDefault.argtypes = [C.c_void_p]
