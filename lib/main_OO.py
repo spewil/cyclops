@@ -111,32 +111,32 @@ class Cyclops(object):
         self.threads = []
 
         # set up threads
-        # parse kwargs 
-        # if image_path is not None:
-        #     self.save = True
-        #
-        #     self.image_path = image_path
-        #     self.image_folder, self.image_name = os.path.split(os.path.abspath(self.image_path))
-        #     if os.path.exists(image_path):
-        #         self.sync = False
-        #         raise ColorControlValueError('File {} already exists in this directory!'
-        #                                      'Designate new .npy filename.'.format(image_path))
-        #
-        #     # make the folder if it doesn't exist
-        #     pathlib.Path(self.image_folder).mkdir(parents=True, exist_ok=True)
-        #
-        #     self.save_queue = deque([self.buffer])
-        #
-        #     w = self.write_images_to_disk()
-        #     self.threads.append(w)
-        #
-        # else:
-        #     self.save = False
+        # parse kwargs
+        if image_path is not None:
+            self.save = True
+
+            self.image_path = image_path
+            self.image_folder, self.image_name = os.path.split(os.path.abspath(self.image_path))
+            if os.path.exists(image_path):
+                self.sync = False
+                raise ColorControlValueError('File {} already exists in this directory!'
+                                             'Designate new .npy filename.'.format(image_path))
+
+            # make the folder if it doesn't exist
+            pathlib.Path(self.image_folder).mkdir(parents=True, exist_ok=True)
+
+            self.save_queue = deque([self.buffer])
+
+            w = self.write_images_to_disk()
+            self.threads.append(w)
+
+        else:
+            self.save = False
 
         # DEBUG:
         self.save = False
 
-        self.preview_frame = (ctypes.c_uint16 * (self.w * self.h)).from_buffer_copy(self.buffer)
+        self.preview_frame = None
         self.new_frame = False
 
         self.control_queue = deque([self.buffer], maxlen=1)
@@ -207,14 +207,14 @@ class Cyclops(object):
 
                 # input_frame = np.asarray(preview_frame, dtype=np.uint8).reshape(self.h, self.w)
                 # preview_frame = (ctypes.c_uint16 * (self.w*self.h)).from_buffer_copy(self.buffer)
-                input_frame = np.array(self.buffer).reshape(self.h, self.w)
-                input_frame = input_frame.astype(np.uint8, copy=False)
+                input_frame = np.asarray(self.buffer).reshape(self.h, self.w)
                 input_frame.byteswap(inplace=True)
+                input_frame = input_frame.astype(np.uint8, copy=False)
 
                 # input_frame = input_frame.astype(np.uint8, copy=False)
 
                 cv2.putText(input_frame, 'Frame: {}'.format(idx), (1000, 1000),
-                                          cv2.FONT_HERSHEY_PLAIN, 2, (0, 0, 255))
+                            cv2.FONT_HERSHEY_PLAIN, 2, (0, 0, 255))
                 idx += 1
                 cv2.imshow('Preview', input_frame)
                 if cv2.waitKey(1) == CV_ESC_KEY:
