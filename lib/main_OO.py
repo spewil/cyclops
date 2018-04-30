@@ -72,7 +72,6 @@ def compute_roi(x0, x1, h):
 
 
 class Cyclops(object):
-    FRAME_QUEUE_LOCK = threading.Lock()
 
     def __init__(self, threshold, x0, x1, h, frame_rate, exposure_time, image_path=None):
         """
@@ -138,6 +137,7 @@ class Cyclops(object):
 
         self.preview_frame = None
         self.new_frame = False
+        self.new_frame_processed = False
 
         self.control_queue = deque([self.buffer], maxlen=1)
         self.preview_queue = deque([self.buffer], maxlen=1)
@@ -148,79 +148,66 @@ class Cyclops(object):
         p = self.display_raw_frame()
         self.threads.append(p)
 
-        # c = self.display_processed_frame(self.threshold)
-        # self.threads.append(c)
+        c = self.display_processed_frame(self.threshold)
+        self.threads.append(c)
 
         for thread in self.threads:
             thread.start()
 
         for thread in self.threads:  # finish
             thread.join()
+        cv2.destroyAllWindows()
 
     @threaded
     def append_frame_to_queue(self):
         while self.sync:
+
             self.buffer = self.camera.get_image(*self.roi_tuple)
-            # self.preview_frame = (ctypes.c_uint16 * (self.w * self.h)).from_buffer_copy(self.buffer)
+            # what type is this?
+            # <class '__main__.c_ushort_Array_5529600'>
+            # a = numpy.frombuffer(buffer, float)
+
             self.new_frame = True
-            # time.sleep(0.02)  # artificially lower framerate
+
             if self.save:
                 self.save_queue.append(self.buffer)
+
         self.camera.close()
 
-    # @threaded
-    # def display_processed_frame(self, threshold):
-    #     output_frame = np.zeros((self.h, self.w, 3))
-    #
-    #     while True:
-    #         if self.control_queue:
-    #             # total loop time: 0.15
-    #
-    #             # looks at the actual buffer
-    #             with Cyclops.FRAME_QUEUE_LOCK:
-    #                 input_frame = np.asarray(self.buffer).reshape(self.h, self.w)
-    #             input_frame.byteswap(True)
-    #
-    #             output_frame[:, :, 0] = controller.BangBang(input_frame.astype(np.uint8, copy=False), threshold)
-    #
-    #             cv2.imshow('Control Output', output_frame)
-    #             if cv2.waitKey(1) == CV_ESC_KEY:
-    #                 self.sync = 0
-    #                 break
-    #     cv2.destroyAllWindows()
-
     @threaded
-    def display_raw_frame(self):
-        idx = 0
+    def display_processed_frame(self, threshold):
         while True:
 
-            # if self.preview_queue:
-            if self.new_frame:
-                self.new_frame = False
-                # total loop time: 0.05
-                # time for buffer copy: 0.016
+            if self.new_frame_processed:
 
-                # # copy this so it doesn't interfere with the control
-                # with Cyclops.FRAME_QUEUE_LOCK:
-                #     preview_frame = (ctypes.c_uint16 * (self.w*self.h)).from_buffer_copy(self.buffer)
-                # # print('previewed buffer id: %i' %id(preview_frame))
-
-                # input_frame = np.asarray(preview_frame, dtype=np.uint8).reshape(self.h, self.w)
-                # preview_frame = (ctypes.c_uint16 * (self.w*self.h)).from_buffer_copy(self.buffer)
-                input_frame = np.asarray(self.buffer).reshape(self.h, self.w)
-                input_frame.byteswap(inplace=True)
-                input_frame = input_frame.astype(np.uint8, copy=False)
-
-                # input_frame = input_frame.astype(np.uint8, copy=False)
-
-                cv2.putText(input_frame, 'Frame: {}'.format(idx), (1000, 1000),
-                            cv2.FONT_HERSHEY_PLAIN, 2, (0, 0, 255))
-                idx += 1
-                cv2.imshow('Preview', input_frame)
+                cv2.imshow('Control Output', (self.preview_frame <= threshold).astype(float))
                 if cv2.waitKey(1) == CV_ESC_KEY:
                     self.sync = 0
                     break
-        cv2.destroyAllWindows()
+
+    @threaded
+    def display_raw_frame(self):
+
+        idx = 0
+        while True:
+            # if self.preview_queue:
+            if self.new_frame:
+
+                self.new_frame = False
+
+                preview_frame = (ctypes.c_uint16 * (self.w * self.h)).from_buffer_copy(self.buffer)
+                preview_frame = np.asarray(preview_frame).reshape(self.h, self.w)
+                preview_frame.byteswap(inplace=True)
+                self.preview_frame = preview_frame.astype(np.uint8)
+                self.new_frame_processed = True
+
+                cv2.putText(self.preview_frame, 'Frame: {}'.format(idx), (1000, 1000),
+                            cv2.FONT_HERSHEY_PLAIN, 2, (0, 0, 255))
+                idx += 1
+                cv2.imshow('Preview', self.preview_frame)
+                if cv2.waitKey(1) == CV_ESC_KEY:
+                    self.sync = 0
+                    break
 
     @threaded
     def write_images_to_disk(self):
