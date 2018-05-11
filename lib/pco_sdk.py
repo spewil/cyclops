@@ -24,8 +24,61 @@ class sdk:
         dwImgDistributionArr, dwMaxImgCountArr = (C.c_uint32(1), C.c_uint32())
         buffer = (C.c_char * 500)()
         p_buffer = C.cast(buffer, C.POINTER(C.c_ubyte))
+        # cannot have access to image buffer in file save mode... (mode 1)
+        # HANDLE* phRec                             //in
+        # HANDLE* phCamArr                          //in, out
+        # const DWORD* dwImgDistributionArr         //in
+        # WORD wArrLength                           //in
+        # DWORD dwRecMode                           //in
+            # 1 = file
+            # 2 = sequence buffer
+            # 4 = ring buffer
+        # const char* szFilePath                    //in
+        # WORD wFileType                            //in
+        # DWORD* dwMaxImgCountArr                   //out
         error = self.PCO_Recorder.PCO_RecorderCreate(self.recorder_handle, self.camera_handle, dwImgDistributionArr, 1, 4, p_buffer, 0, dwMaxImgCountArr)
         return error, dwMaxImgCountArr.value
+
+    def recorder_get_settings(self):
+        self.PCO_Recorder.PCO_RecorderGetSettings.argtypes = [C.c_void_p, C.c_void_p,
+                                                              C.POINTER(C.c_uint32), C.POINTER(C.c_uint32), C.POINTER(C.c_uint32),
+                                                              C.POINTER(C.c_uint16), C.POINTER(C.c_uint16)]
+        dwRecmode = C.c_uint32()
+        dwMaxImgCount = C.c_uint32()
+        dwReqImgCount = C.c_uint32()
+        wWidth = C.c_uint16()
+        wHeight = C.c_uint16()
+
+        error = self.PCO_Recorder.PCO_RecorderGetSettings(self.recorder_handle, self.camera_handle, dwRecmode, dwMaxImgCount, dwReqImgCount, wWidth, wHeight)
+
+        ret = {}
+        if error == 0:
+            ret.update({"recorder_mode": dwRecmode})
+            ret.update({"max_img_count": dwMaxImgCount})
+            ret.update({"req_img_count": dwReqImgCount})
+            ret.update({"img_width": wWidth})
+            ret.update({"img_height": wHeight})
+        return error, ret
+
+    def recorder_get_image_size(self):
+        '''
+        phRec HANDLE HANDLE to a previously created recorder object
+        phCam HANDLE HANDLE to the camera the image size should be retrieved
+        wWidth WORD* Pointer to a WORD to get the image width of the camera
+        wHeight WORD* Pointer to a WORD to get the image height of the camera
+        '''
+        self.PCO_Recorder.PCO_RecorderGetImageSize.argtypes = [C.c_void_p, C.c_void_p,
+                                                              C.POINTER(C.c_uint16), C.POINTER(C.c_uint16)]
+        wWidth = C.c_uint16()
+        wHeight = C.c_uint16()
+
+        error = self.PCO_Recorder.PCO_RecorderGetImageSize(self.recorder_handle, self.camera_handle, wWidth, wHeight)
+
+        ret = {}
+        if error == 0:
+            ret.update({"img_width": wWidth})
+            ret.update({"img_height": wHeight})
+        return error, ret
 
     def recorder_delete(self):
         self.PCO_Recorder.PCO_RecorderDelete.argtypes = [C.c_void_p]
@@ -33,8 +86,20 @@ class sdk:
         return error
 
     def recorder_init(self):
+        '''
+        phRec HANDLE
+            HANDLE to a previously created recorder object
+        dwImgCountArr DWORD*
+            Pointer to an array for required image counts for all cameras (at least 4 images per camera are required)
+        wArrLength WORD
+            Length of the transferred array
+        wNoOverwrite  WORD
+            Flag to decide if existing files should be kept. If not set existing files will be deleted
+        '''
         self.PCO_Recorder.PCO_RecorderInit.argtypes = [C.c_void_p, C.POINTER(C.c_uint32), C.c_uint16, C.c_uint16]
-        dwImgCountArr = (C.c_uint32(40))
+
+        # i think this is the buffer size, the required number of images in the record
+        dwImgCountArr = (C.c_uint32(1000))
         error = self.PCO_Recorder.PCO_RecorderInit(self.recorder_handle, dwImgCountArr, 1, 0)
         return error
 
@@ -48,11 +113,20 @@ class sdk:
         error = self.PCO_Recorder.PCO_RecorderStopRecord(self.recorder_handle, self.camera_handle)
         return error
 
-    def recorder_copy_image(self, img, x0, y0, x1, y1):
+    '''
+    If the recorder mode is record-to-memory in conjunction 
+    with ring buffer mode and acquisition is running, it is possible 
+    that the required image will be overwritten during copy. In this 
+    case the resulting data will be unpredictable. So be careful 
+    using the function during this state.
+    '''
+    def recorder_copy_image(self, x0, y0, x1, y1):
         self.PCO_Recorder.PCO_RecorderCopyImage.argtypes = [C.c_void_p, C.c_void_p, C.c_uint32, C.c_uint16, C.c_uint16, C.c_uint16, C.c_uint16, C.POINTER(C.c_uint16)]
         wImgBuf = (C.c_uint16 * (((x1-x0)+1)*((y1-y0)+1)))()
+        # this call to cast *should* make a new memory chunk...
         p_wImgBuf = C.cast(wImgBuf, C.POINTER(C.c_uint16))
         error = self.PCO_Recorder.PCO_RecorderCopyImage(self.recorder_handle, self.camera_handle, C.c_uint32(0xffffffff), x0, y0, x1, y1, p_wImgBuf)
+        # C.c_uint32(0xffffffff) = gets the latest image
         return error, wImgBuf
 
     def reset_lib(self):
@@ -168,6 +242,36 @@ class sdk:
     def arm(self):
         self.SC2_Cam.PCO_ArmCamera.argtypes = [C.c_void_p]
         error = self.SC2_Cam.PCO_ArmCamera(self.camera_handle)
+        return error
+
+    def set_image_parameters(self, x_res, y_res):
+        self.SC2_Cam.PCO_SetImageParameters.argtypes = [C.c_void_p, C.c_uint16, C.c_uint16, C.c_uint32, C.c_void_p, C.c_int]
+        wxres = C.c_uint16(x_res)
+        wyres = C.c_uint16(y_res)
+        dwFlags = C.c_uint32(1)
+        param = C.c_void_p()
+        ilen = C.c_int()
+
+        error = self.SC2_Cam.PCO_SetImageParameters(self.camera_handle, wxres, wyres, dwFlags, param, ilen)
+
+        return error
+
+    def set_transfer_parameters_auto(self):
+        self.SC2_Cam.PCO_SetTransferParametersAuto.argtypes = [C.c_void_p, C.POINTER(C.c_void_p), C.c_int]
+        buffer = C.c_void_p(0)
+        ilen = C.c_int(0)
+
+        error = self.SC2_Cam.PCO_SetTransferParametersAuto(self.camera_handle, buffer, ilen)
+
+        return error
+
+    # PCO_SetTransferParametersAuto()(SDK Manual page 202)
+
+    # The PCO_SetTimestampMode() function sets the timestamp mode of the camera(SDK Manual page 148):
+    def set_timestamp_mode(self, mode):
+        self.SC2_Cam.PCO_SetTimestampMode.argtypes = [C.c_void_p, C.c_uint16]
+        timestamp_mode = {'off': 0, 'binary': 1, 'binary & ascii': 2, 'ascii': 3}
+        error = self.SC2_Cam.PCO_SetTimestampMode(self.camera_handle, timestamp_mode[mode])
         return error
 
     def get_error_text(self, errorcode):
