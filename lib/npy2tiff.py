@@ -28,9 +28,10 @@ def compute_ROI(x0, x1, h):
 
     return (x0,y0,x1,y1)
 
+# get size of first image here!
 x0 = 0
-x1 = 2560
-h = 2160
+x1 = 2560 // 2
+h = 2160 // 2
 
 roi_tuple = compute_ROI(x0,x1,h)
 w = roi_tuple[2] - roi_tuple[0] + 1
@@ -39,7 +40,6 @@ filename = input('Enter .npy filepath: ')
 
 out_filename = input('Enter desired .tiff filepath: ')
 
-# frames = []
 with open(filename, 'rb') as f_in:
 
     while True:

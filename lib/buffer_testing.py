@@ -64,24 +64,24 @@ buffer = (ctypes.c_uint16 * (w * h))()
 camera = pco_camera.camera(frame_rate_mHz, exposure_time_ns, x_binning, y_binning, *roi_tuple)
 
 # run this two times
-for i in range(2):
-
-    # i think buffer has to be copied here in order to be saved
-
-    buffer = camera.get_image(*roi_tuple)  # <class '__main__.c_ushort_Array_{{w * h}}'>
-    print('object id of buffer: ',id(buffer))
-    print('type of buffer: ',type(buffer))
-    print('address of buffer: ',ctypes.addressof(buffer))
-    print('type of buffer element: ',type(buffer[0]))
-
-    new_buffer = buffer
-    print('object id of new buffer: ',id(new_buffer))
-    print('type of new buffer element: ',type(new_buffer[0]))
-    print('address of buffer: ',ctypes.addressof(new_buffer))
-
-    # to construct new memory block:
-    # new_pointer = ctypes.cast(ctype_structure, ctypes.POINTER({{type(ctype_structure)}}))
-
-    # turn this into a numpy array?
-    numpy_array_from_buffer = np.array(np.frombuffer(buffer, dtype=np.uint8))
-    # numpy_array_from_iterable = np.array(np.fromiter(buffer, dtype=np.uint8))
+# for i in range(2):
+#
+#     # i think buffer has to be copied here in order to be saved
+#
+#     buffer = camera.get_image(*roi_tuple)  # <class '__main__.c_ushort_Array_{{w * h}}'>
+#     print('object id of buffer: ',id(buffer))
+#     print('type of buffer: ',type(buffer))
+#     print('address of buffer: ',ctypes.addressof(buffer))
+#     print('type of buffer element: ',type(buffer[0]))
+#
+#     new_buffer = buffer
+#     print('object id of new buffer: ',id(new_buffer))
+#     print('type of new buffer element: ',type(new_buffer[0]))
+#     print('address of buffer: ',ctypes.addressof(new_buffer))
+#
+#     # to construct new memory block:
+#     # new_pointer = ctypes.cast(ctype_structure, ctypes.POINTER({{type(ctype_structure)}}))
+#
+#     # turn this into a numpy array?
+#     numpy_array_from_buffer = np.array(np.frombuffer(buffer, dtype=np.uint8))
+#     # numpy_array_from_iterable = np.array(np.fromiter(buffer, dtype=np.uint8))

@@ -256,6 +256,7 @@ class sdk:
 
         return error
 
+    # PCO_SetTransferParametersAuto()(SDK Manual page 202)
     def set_transfer_parameters_auto(self):
         self.SC2_Cam.PCO_SetTransferParametersAuto.argtypes = [C.c_void_p, C.POINTER(C.c_void_p), C.c_int]
         buffer = C.c_void_p(0)
@@ -264,8 +265,6 @@ class sdk:
         error = self.SC2_Cam.PCO_SetTransferParametersAuto(self.camera_handle, buffer, ilen)
 
         return error
-
-    # PCO_SetTransferParametersAuto()(SDK Manual page 202)
 
     # The PCO_SetTimestampMode() function sets the timestamp mode of the camera(SDK Manual page 148):
     def set_timestamp_mode(self, mode):
@@ -284,6 +283,24 @@ class sdk:
             temp_list.append(buffer[i])
         output_string = bytes.join(b'', temp_list).decode('ascii')
         return output_string.strip("/0")
+
+    def get_camera_setup(self):
+        self.SC2_Cam.PCO_GetCameraSetup.argytpes = [C.c_void_p, C.POINTER(C.c_uint16), C.POINTER(C.c_uint32), C.POINTER(C.c_uint16)]
+
+        wType = C.c_uint16(0)
+
+        dwSetup = (C.c_uint32 * 4)()
+        p_dwSetup = C.cast(dwSetup, C.POINTER(C.c_ulong))
+
+        wLen = C.c_uint16(4)
+
+        error = self.SC2_Cam.PCO_GetCameraSetup(self.camera_handle, wType, p_dwSetup, wLen)
+
+        ret = {}
+        if error == 0:
+            ret.update({'setup_array': dwSetup.value})
+
+        return error, ret
 
     def reset_settings_to_default(self):
         self.SC2_Cam.PCO_ResetSettingsToDefault.argtypes = [C.c_void_p]

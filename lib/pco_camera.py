@@ -50,12 +50,12 @@ class camera:
             print("set framerate: ", self.__cam.get_error_text(error))
             print("desired: ", "framerate_mHz: ", frame_rate_mHz, "; exposure_ns", exposure_time_ns)
 
-            error, ret = self.__cam.get_binning()
-            print("get binning: ", self.__cam.get_error_text(error))
-            print("default: ", "x_binning: ",ret["x_binning"], "; y_binning: ",ret["y_binning"])
-            error, ret = self.__cam.set_binning(2, 2)
-            print("set binning: ", self.__cam.get_error_text(error))
-            print("desired: ", "x_binning: ", x_binning, "; y_binning: ", y_binning)
+            # error, ret = self.__cam.get_binning()
+            # print("get binning: ", self.__cam.get_error_text(error))
+            # print("default: ", "x_binning: ",ret["x_binning"], "; y_binning: ",ret["y_binning"])
+            # error, ret = self.__cam.set_binning(2, 2)
+            # print("set binning: ", self.__cam.get_error_text(error))
+            # print("desired: ", "x_binning: ", x_binning, "; y_binning: ", y_binning)
 
             # get trigger mode?
             error = self.__cam.set_trigger_mode(0)
@@ -66,14 +66,23 @@ class camera:
             error = self.__cam.set_transfer_parameters_auto()
             print("set transfer parameters auto:", self.__cam.get_error_text(error))
 
-            error, ret = self.__cam.get_binning()
-            print("get binning: ", self.__cam.get_error_text(error))
-            print("current: ", "x_binning: ",ret["x_binning"], "; y_binning: ",ret["y_binning"])
+            # error, ret = self.__cam.get_binning()
+            # print("get binning: ", self.__cam.get_error_text(error))
+            # print("current: ", "x_binning: ",ret["x_binning"], "; y_binning: ",ret["y_binning"])
             error, ret = self.__cam.get_frame_rate()
             print("current: ", "framerate_mHz: ",ret["frame rate mHz"], "; exposure_ns: ",ret["exposure time ns"])
             error, ret = self.__cam.get_roi()
             print("get roi: ", self.__cam.get_error_text(error))
             print("current roi:",ret["x0"],ret["y0"],ret["x1"],ret["y1"])
+
+            mode = 'binary & ascii'
+            error = self.__cam.set_timestamp_mode(mode)
+            print("set timestamp mode: ",self.__cam.get_error_text(error))
+            print("current timestamp mode: ",mode)
+
+            error, ret = self.__cam.get_camera_setup()
+            print("get camera_setup: ",self.__cam.get_error_text(error))
+            # print("current setup:", ret["setup_array"])
 
             error = self.__cam.arm()
             print("arm:", self.__cam.get_error_text(error))
