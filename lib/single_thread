@@ -1,0 +1,62 @@
+# -*- coding: utf-8 -*-
+
+import cv2
+import numpy as np
+import time
+import ctypes
+
+from lib import pco_camera
+from lib import FPS
+
+MAX_CAM_X_RES = 2560
+MAX_CAM_Y_RES = 2160
+CAM_X_ROI_STEP = 160
+CAM_Y_ROI_STEP = 1
+
+CV_ESC_KEY = 27
+
+FPS_BOT = FPS.FPS()
+
+if __name__ == '__main__':
+
+    frame_rate_mHz = int(40e3)
+    exposure_time_ns = int(1e7)
+    threshold = 100.
+    binning = 1
+    roi_tuple = (0, 0, MAX_CAM_X_RES, MAX_CAM_Y_RES)
+
+    # set up camera
+    camera = pco_camera.Camera(frame_rate_mHz, exposure_time_ns, binning, binning, *roi_tuple)
+
+    # start recording
+    camera.start_record()
+
+    # add to queue in a loop
+    FPS_BOT.start()
+    idx = 0
+    for i in range(1000):
+        # if there's a new frame to add
+        # time.sleep(0.001)
+
+        camera.add_buffers_to_queue()
+
+
+        # convert to numpy
+        buf_info = camera.queue.popleft()
+
+        # I expect to read out 16*X*Y bytes from this address
+        # how can I read out bytes and get them into numpy?
+
+        array = np.frombuffer(memoryview((ctypes.c_uint16 * (camera.xRes*camera.yRes)).from_address(buf_info.address)), dtype=np.uint16).reshape((camera.yRes, camera.xRes))
+
+        # cv2.putText(array, 'Frame: {}'.format(idx), (1000, 1000), cv2.FONT_HERSHEY_PLAIN, 2, (0, 0, 255))
+        # cv2.imshow('Frame', array)
+
+        idx += 1
+        #
+        # if cv2.waitKey(1) is CV_ESC_KEY:
+        #     break
+        FPS_BOT.update()
+
+    FPS_BOT.stop()
+    print("Frames per second processing: ", FPS_BOT.fps())

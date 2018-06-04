@@ -150,13 +150,18 @@ class sdk:
 
     def allocate_buffer(self, buf_size):
         self.SC2_Cam.PCO_AllocateBuffer.argtypes = [wintypes.HANDLE, C.POINTER(C.c_int), C.c_uint32, C.POINTER(C.POINTER(C.c_uint16)), C.POINTER(wintypes.HANDLE)]
-        sBufNr = C.c_int(-1)
-        dwSize = C.c_uint32(buf_size)
-        wBuf = C.POINTER(C.c_uint16)()
+        sBufNr = C.c_int(-1) # index
+        dwSize = C.c_uint32(buf_size) # number of bytes
+        wBuf = C.POINTER(C.c_uint16)() # buffer pointer
         hEvent = wintypes.HANDLE()
-        print(sBufNr, dwSize, wBuf, hEvent)
         error = self.SC2_Cam.PCO_AllocateBuffer(self.camera_handle, C.byref(sBufNr), dwSize, C.byref(wBuf), C.byref(hEvent))
-        return error
+        ret = {}
+        if error == 0:
+            ret.update({'buffer_idx': sBufNr.value})
+            ret.update({'buffer_p': wBuf})
+            ret.update({'buffer_address': C.addressof(wBuf.contents)})
+            ret.update({'event': hEvent.value})
+        return error, ret
 
     def free_buffer(self, buf_num):
         self.SC2_Cam.PCO_FreeBuffer.argtypes = [wintypes.HANDLE, wintypes.SHORT]
@@ -253,7 +258,7 @@ class sdk:
     def set_frame_rate(self, frame_rate_mHz, exposure_time_ns):
         self.SC2_Cam.PCO_SetFrameRate.argtypes = [C.c_void_p, C.POINTER(C.c_uint16), C.c_uint16, C.POINTER(C.c_uint32), C.POINTER(C.c_uint32)]
         wFrameRateStatus = C.c_uint16()
-        wFrameRateMode = C.c_uint16()
+        wFrameRateMode = C.c_uint16(1)
         dwFrameRate = C.c_uint32(frame_rate_mHz)
         dwFrameRateExposure = C.c_uint32(exposure_time_ns)
         error = self.SC2_Cam.PCO_SetFrameRate(self.camera_handle, wFrameRateStatus, wFrameRateMode, dwFrameRate, dwFrameRateExposure)
