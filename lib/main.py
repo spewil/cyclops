@@ -1,177 +1,1 @@
-# -*- coding: utf-8 -*-
-
-import ctypes
-from threading import Thread, Lock
-import cv2 
-import numpy as np
-import pathlib
-import time 
-from collections import deque
-import os 
-
-import pco_camera
-import controller 
-from tools import compute_ROI
-
-def initialize_camera():
-
-    # stuff 
-    pass
-
-def populate_queues(camera, x0, y0, x1, y1, exposure_time):
-
-    global buffer
-    global sync
-    global save_queue
-
-    while sync is 1:
-
-        buffer = camera.get_image(x0, y0, x1, y1)
-
-        # this cannot collide! 
-        save_queue.append(buffer)
-
-    camera.close()
-
-def output_control(w, h, threshold):
-
-    global buffer
-    global sync
-
-    output_frame = np.zeros((h,w,3))
-
-    while sync is 1:
-
-        input_frame = np.asarray(buffer).reshape(h, w)
-        input_frame.byteswap(True)
-
-        output_frame[:,:,0] = controller.BangBang(input_frame.astype(np.uint8, copy=False), threshold)
-        # cv2.namedWindow('Control Output', cv2.WINDOW_AUTOSIZE) 
-        cv2.imshow('Control Output', output_frame)
-            
-        if cv2.waitKey(1) == 27:
-            sync = 0
-
-    # close windows 
-    cv2.destroyAllWindows()
-
-def preview_frame(w, h):
-
-    global buffer 
-    global sync
-
-    while sync is 1:
-
-        input_frame = np.asarray(buffer).reshape(h, w)
-        input_frame.byteswap(True)
-        input_frame = input_frame.astype(np.uint8, copy=False)
-        # cv2.namedWindow('Preview', cv2.WINDOW_AUTOSIZE) 
-        cv2.imshow('Preview', input_frame)
-
-        if cv2.waitKey(1) == 27:
-            sync = 0
-
-    # close windows
-    cv2.destroyAllWindows()
-
-
-def pop_images():
-
-    global save_queue
-    global sync
-
-    # pops frames out of the queue one by one without saving
-    while True:
-        if save_queue:
-            save_queue.popleft()
-
-        if not save_queue and sync is 0:
-            print('BREAK')
-            break
-
-def write_images_to_disk(image_folder_path):
-
-    global save_queue
-
-    image_path = image_folder_path + 'images4_25_3.npy'
-
-    if os.path.exists(image_path):
-        raise ValueError('This file already exists! Designate new .npy filename.')
-
-    # make the folder path if it doesn't exist
-    pathlib.Path(image_folder_path).mkdir(parents=True, exist_ok=True)
-
-    # open a file for saving 
-    with open(image_path, 'ab') as f:
-
-        while True:
-
-            # if the queue is not empty
-            if save_queue:
-                # grab the most recent buffer 
-                oldest_buffer = save_queue.popleft()
-                # oldest_buffer = np.asarray(oldest_buffer).byteswap(True)
-                np.save(f, oldest_buffer)#.astype(np.uint8, copy=False))
-
-            # if the queue is empty
-            else:
-                print('queue is empty! length = ', len(save_queue))
-                break         
-
-
-if __name__ == '__main__':
-
-    # user info 
-    x0 = 0
-    x1 = 2560
-    h = 2160
-    exposure_time = int(1e7) # nanoseconds? 0.01sec
-    framerate = int(40e3) # milliHz? 40Hz 
-
-    threshold = 100.
-
-    experiment_name = '4_24' #input('Enter experiment name: ')
-    image_folder_path = 'C:/Users/Kelly_group01/Documents/'+experiment_name+'/'
-    
-    save = 0
-    preview = 1
-    show_control = 0
-
-    roi_tuple = compute_ROI(x0,x1,h)
-    w = roi_tuple[2] - roi_tuple[0] + 1
-
-    print(roi_tuple)
-
-    # make the camera 
-    camera = pco_camera.camera(*roi_tuple, framerate, exposure_time)
-
-    # create buffer
-    buffer = (ctypes.c_uint16 * (w*h))()
-
-    save_queue = deque([buffer])
-
-    sync = 1
-
-    threads = []
-
-    populate_thread = Thread(target=populate_queues, args=(camera, *roi_tuple, exposure_time))
-    threads.append(populate_thread)
-
-    if preview:
-        preview_thread = Thread(target=preview_frame, args=(w, h))
-        threads.append(preview_thread)
-
-    if save:
-        consumer_thread = Thread(target=write_images_to_disk, args=(image_folder_path,))
-        threads.append(consumer_thread)
-    else:
-        consumer_thread = Thread(target=pop_images)
-        threads.append(consumer_thread)       
-
-    if show_control:
-        output_thread = Thread(target=output_control, args=(w, h, threshold))
-        threads.append(output_thread)
-
-    [thread.start() for thread in threads]
-
-    [thread.join() for thread in threads]
+# -*- coding: utf-8 -*-import osimport sysimport datetimeimport timeimport ctypesfrom threading import Thread# from multiprocessing import Processfrom collections import dequeimport sharedmemimport pathlibimport cv2import numpy as nptry:    import pco_camera    import controller    import FPS    import preprocessingexcept ImportError:    from lib import pco_camera    from lib import controller    from lib import FPS    from lib import preprocessingMAX_CAM_X_RES = 2560MAX_CAM_Y_RES = 2160CAM_X_ROI_STEP = 160CV_ESC_KEY = 27FPS_APPEND_BOT = FPS.FPS()FPS_PROCESSOR_BOT = FPS.FPS()FPS_SAVE_BOT = FPS.FPS()class ColorControlError(Exception):    passclass ColorControlValueError(ColorControlError, ValueError):    passdef threaded(fn):    def wrapper(*args, **kwargs):        thread = Thread(target=fn, args=args, kwargs=kwargs)        # thread.start()        return thread    # function handle    return wrapper# amend this for binning settings# if binning = b, divide resolution by bdef compute_roi(x0, x1, h, binning):    max_binned_width = MAX_CAM_X_RES // binning    max_binned_height = MAX_CAM_Y_RES // binning    if x1 - x0 > max_binned_width:        raise ColorControlError("ROI width must be < ",max_binned_width)    elif h > max_binned_height:        raise ColorControlError("ROI height must be < ",max_binned_height)    elif x1 <= x0:        raise ColorControlError("ROI must have x1 > x0")    elif x1-x0 < CAM_X_ROI_STEP:        raise ColorControlError("Width must be greater than {}".format(CAM_X_ROI_STEP))    # Ensure coords are bounded properly    x0 = max(0, x0 - x0 % CAM_X_ROI_STEP) + 1    x1 = min(MAX_CAM_X_RES, x1 + CAM_X_ROI_STEP - x1 % CAM_X_ROI_STEP)    # make h even     if h % 2 is not 0:        h += 1    # compute the y coords (must be symmetric for pco.edge)    h_2 = h // 2    # height must be even, minimum is 16     # x values are multiples of 160, minimum is 160    half_y_max = MAX_CAM_Y_RES // 2    y0 = half_y_max - h_2 + 1    y1 = half_y_max + h_2    return x0, y0, x1, y1class Cyclops(object):    def __init__(self, threshold, x0, x1, h, binning, frame_rate, exposure_time, image_path=None):        """        :param float threshold:        :param int x0:        :param int x1:        :param int h:        :param int frame_rate:        :param int exposure_time:        :param str image_path:        """        # initialize the camera        self.roi_tuple = compute_roi(x0, x1, h, binning)        if __debug__:            print('Desired ROI: ', self.roi_tuple)        self.w = self.roi_tuple[2] - self.roi_tuple[0] + 1        self.h = h        self.threshold = threshold        self.buffer = (ctypes.c_uint16 * (self.w * self.h))()        # change this to combine pco_camera        binning = 2        try:            self.camera = pco_camera.camera(frame_rate, exposure_time, binning, binning, *self.roi_tuple)        except pco_camera.PcoCamError as err:            sys.exit('Could not start camera, the following error occurred: {}'.format(err))        self.sync = True        self.threads = []        self.save_queue = deque([], maxlen=250)        self.process_queue = deque([], maxlen=5) # this is threadsafe, so its groovy        self.display_queue = deque([], maxlen=5) # this is threadsafe, so its groovy        # print('running setup')        # self.setup()        a = self.append_frame_to_queues()        self.threads.append(a)        if image_path is not None:            self.save = True            self.image_path = image_path            self.image_folder, self.image_name = os.path.split(os.path.abspath(self.image_path))            if os.path.exists(image_path):                self.sync = False                raise ColorControlValueError('File {} already exists in this directory!'                                             'Designate new .npy filename.'.format(image_path))            # make the folder if it doesn't exist            pathlib.Path(self.image_folder).mkdir(parents=True, exist_ok=True)            w = self.write_images_to_disk()            self.threads.append(w)        r = self.display_raw_frame()        self.threads.append(r)        c = self.display_processed_frame(self.threshold)        self.threads.append(c)        for thread in self.threads:            thread.start()        for thread in self.threads:  # finish            thread.join()        cv2.destroyAllWindows()    def setup(self):        print('calculating transform...')        # compute affine transform        # output registration pattern (black with 3 white dots)        # show image from camera, click dots and save locs        # save transform in self.transform        transformer = preprocessing.TransformCalculator(self.camera)        # note the dimensionality of the transform here!        # self.transform = transformer.transform        self.transform = np.array([transformer.transform])        print('in cyclops: ',self.transform)        while True:            time.sleep(1)            frame = self.camera.get_image()            frame = np.asarray(frame).reshape(self.h, self.w)            frame.byteswap(inplace=True)            frame = frame.astype(np.uint8, copy=False)            # note the dimensionality of the transform here            frame = cv2.transform(frame, self.transform, (self.w, self.h))            cv2.imshow("Preview Transformation", frame)            if cv2.waitKey(10) == 27:                break        cv2.destroyAllWindows()        # ask if you want to mask        # ask if you want mask mirrored        # draw mirror plane location        # apply mask    @threaded    def append_frame_to_queues(self):        '''        Adds incoming buffers from the camera to queues for saving, processing, and displaying        :param:        :return:        '''        FPS_APPEND_BOT.start()        count = 0        while self.sync:            time.sleep(0.01)            self.buffer = self.camera.get_image()  # <class '__main__.c_ushort_Array_{{w * h}}'>            # copy the incoming buffer into a numpy array            preview_frame = np.asarray(self.buffer).reshape(self.h, self.w)            preview_frame.byteswap(inplace=True)            preview_frame = preview_frame.astype(np.uint8, copy=False)            self.process_queue.append(preview_frame)            self.save_queue.append(preview_frame)            self.display_queue.append(preview_frame)            FPS_APPEND_BOT.update()        FPS_APPEND_BOT.stop()        print("Frames per second appending: ", FPS_APPEND_BOT.fps()) # 141 without processing, 67 with        self.camera.close()    @threaded    def display_processed_frame(self, threshold):        time.sleep(1)        FPS_PROCESSOR_BOT.start()        idx = 0        while True:            if self.process_queue:                processed_frame = self.process_queue.pop()                cv2.putText(processed_frame, 'Frame: {}'.format(idx), (1000, 1000),                            cv2.FONT_HERSHEY_PLAIN, 2, (0, 0, 255))                cv2.imshow('Control Output', (processed_frame <= threshold).astype(float))                idx += 1                if cv2.waitKey(1) is CV_ESC_KEY:                    self.sync = False                    break                FPS_PROCESSOR_BOT.update()        FPS_PROCESSOR_BOT.stop()        print("Frames per second processing: ",FPS_PROCESSOR_BOT.fps())    @threaded    def display_raw_frame(self):        time.sleep(1)        idx = 0        while True:            if self.display_queue:                display_frame = self.display_queue.pop()                cv2.putText(display_frame, 'Frame: {}'.format(idx), (1000, 1000),                            cv2.FONT_HERSHEY_PLAIN, 2, (0, 0, 255))                cv2.putText(display_frame, 'Time: {}'.format(time.time()), (1000, 1100),                            cv2.FONT_HERSHEY_PLAIN, 2, (0, 0, 255))                idx += 1                cv2.imshow('Preview', display_frame)                if cv2.waitKey(1) is CV_ESC_KEY or self.sync is False:                    self.sync = False                    break    @threaded    def write_images_to_disk(self):        FPS_SAVE_BOT.start()        with open(self.image_path, 'ab') as video_file_buffer:            while True:                if len(self.save_queue) > 50:                    print('save queue overload')                    self.sync = False                else:                    if self.save_queue:  # if the queue is not empty                        # grab the most recent buffer                        np.save(video_file_buffer, self.save_queue.popleft())                        FPS_SAVE_BOT.update()                    # if the queue is empty and experiment no longer running                    if not self.save_queue and not self.sync:                        print('Saving complete! Length = ', len(self.save_queue))                        break        FPS_SAVE_BOT.stop()        print("Frames per second saving: ", FPS_SAVE_BOT.fps()) # 141 without processing, 67 withif __name__ == '__main__':    # # construct the argument parse and parse the arguments    # ap = argparse.ArgumentParser()    # ap.add_argument("-n", "--num-frames", type=int, default=100,    #                 help="# of frames to loop over for FPS test")    # ap.add_argument("-d", "--display", type=int, default=-1,    #                 help="Whether or not frames should be displayed")    # args = vars(ap.parse_args())    # this drives the maximum ROI    binning = 2    max_x_ROI = MAX_CAM_X_RES // binning    max_y_ROI = MAX_CAM_Y_RES // binning    # user info    x0 = 0    x1 = max_x_ROI // 2    h = max_y_ROI // 2    # camera_type = OSX_webcam    # camera_type = PCO_Edge    exposure_time_ns = int(1e7)    frame_rate_mHz = int(60e3)    threshold = 100.    image_name = 'test_image_1.npy'    folder_name = '5_30'  # input('Enter experiment name: ')    image_path = os.path.join(os.path.normpath('C:/Users/Kelly_group01/Documents/'), folder_name, image_name)    # def __init__(self, threshold, x0, x1, h, frame_rate, exposure_time, image_path=None):    experiment = Cyclops(threshold, x0, x1, h, binning, frame_rate_mHz, exposure_time_ns, image_path=image_path)# C:/Users/Kelly_group01/Documents/5_29/test_image5_29_12.npy

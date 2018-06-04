@@ -15,10 +15,6 @@ class camera:
 
     def __init__(self, frame_rate_mHz, exposure_time_ns, x_binning, y_binning, x0, y0, x1, y1):
 
-        # calculate actual desired resolution
-        self.xRes = MAX_CAM_X_RES #(x1 - x0 + 1) // 2
-        self.yRes = MAX_CAM_Y_RES #(y1 - y0 + 1) // 2
-
         error = self.__cam.reset_lib()
         print("reset lib:", self.__cam.get_error_text(error))
         error = self.__cam.open_camera()
@@ -29,96 +25,108 @@ class camera:
 
             error = self.__cam.set_recording_state(0)
             print("set recording state:", self.__cam.get_error_text(error))
-
-            # SET ALL SETTINGS HERE
             error = self.__cam.reset_settings_to_default()
             print("reset settings to default:", self.__cam.get_error_text(error))
 
-            error, ret = self.__cam.get_roi()
-            print("get roi: ", self.__cam.get_error_text(error))
-            print("default roi:",ret["x0"],ret["y0"],ret["x1"],ret["y1"])
-            error = self.__cam.set_roi(x0, y0, x1, y1)
-            print("set roi:", self.__cam.get_error_text(error))
-
-            # error = self.__cam.set_delay_exposure_time(0, exposure_time_ns//1000)
-            # print("set delay exposure time:", self.__cam.get_error_text(error))
-
-            error, ret = self.__cam.get_frame_rate()
-            print("get framerate: ", self.__cam.get_error_text(error))
-            print("default: ", "framerate_mHz: ",ret["frame rate mHz"], "; exposure_ns",ret["exposure time ns"])
+            # FRAMERATE
             error, ret = self.__cam.set_frame_rate(frame_rate_mHz, exposure_time_ns)
             print("set framerate: ", self.__cam.get_error_text(error))
-            print("desired: ", "framerate_mHz: ", frame_rate_mHz, "; exposure_ns", exposure_time_ns)
+            print("desired framerate_mHz: ",ret["frame rate mHz"])
+            print("desired exposure_ns: ",ret["exposure time ns"])
 
-            # error, ret = self.__cam.get_binning()
-            # print("get binning: ", self.__cam.get_error_text(error))
-            # print("default: ", "x_binning: ",ret["x_binning"], "; y_binning: ",ret["y_binning"])
-            # error, ret = self.__cam.set_binning(2, 2)
-            # print("set binning: ", self.__cam.get_error_text(error))
-            # print("desired: ", "x_binning: ", x_binning, "; y_binning: ", y_binning)
-
-            # get trigger mode?
+            # TRIGGER MODE
             error = self.__cam.set_trigger_mode(0)
             print("set trigger mode:", self.__cam.get_error_text(error))
 
+            # TIMESTAMPS
+            mode = 'binary & ascii'
+            error = self.__cam.set_timestamp_mode(mode)
+            print("set timestamp mode: ",self.__cam.get_error_text(error))
+            print("timestamp mode: ",mode)
+
+            # # BINNING
+            # error, ret = self.__cam.set_binning(2, 2)
+            # print("set binning: ", self.__cam.get_error_text(error))
+            # print("desired x_binning: ", x_binning)
+            # print("desired y_binning: ", y_binning)
+            #
+            # # ROI
+            # error = self.__cam.set_roi(x0, y0, x1, y1)
+            # print("set roi:", self.__cam.get_error_text(error))
+
+            # CHECK SETTINGS
+            # TODO: Offer option if the current =/= desired
+            # error, ret = self.__cam.get_binning()
+            # print("get binning: ", self.__cam.get_error_text(error))
+            # print("current x_binning: ",ret["x_binning"])
+            # print("current y_binning: ",ret["y_binning"])
+            error, ret = self.__cam.get_frame_rate()
+            print("get framerate: ", self.__cam.get_error_text(error))
+            print("current framerate_mHz: ",ret["frame rate mHz"])
+            # print("current exposure_ns: ",ret["exposure time ns"])
+            # error, ret = self.__cam.get_roi()
+            # print("get roi: ", self.__cam.get_error_text(error))
+            # print("current roi:",ret["x0"],ret["y0"],ret["x1"],ret["y1"])
+
+            # SET PARAMS
             error = self.__cam.set_image_parameters(self.xRes,self.yRes)
             print("set image parameters:", self.__cam.get_error_text(error))
             error = self.__cam.set_transfer_parameters_auto()
             print("set transfer parameters auto:", self.__cam.get_error_text(error))
 
-            # error, ret = self.__cam.get_binning()
-            # print("get binning: ", self.__cam.get_error_text(error))
-            # print("current: ", "x_binning: ",ret["x_binning"], "; y_binning: ",ret["y_binning"])
-            error, ret = self.__cam.get_frame_rate()
-            print("current: ", "framerate_mHz: ",ret["frame rate mHz"], "; exposure_ns: ",ret["exposure time ns"])
-            error, ret = self.__cam.get_roi()
-            print("get roi: ", self.__cam.get_error_text(error))
-            print("current roi:",ret["x0"],ret["y0"],ret["x1"],ret["y1"])
-
-            mode = 'binary & ascii'
-            error = self.__cam.set_timestamp_mode(mode)
-            print("set timestamp mode: ",self.__cam.get_error_text(error))
-            print("current timestamp mode: ",mode)
-
-            error, ret = self.__cam.get_camera_setup()
-            print("get camera_setup: ",self.__cam.get_error_text(error))
-            # print("current setup:", ret["setup_array"])
-
+            # ARM AND RECORDER
             error = self.__cam.arm()
             print("arm:", self.__cam.get_error_text(error))
 
-            error, img_count = self.__cam.recorder_create()
-            print("recorder create:", self.__cam.get_error_text(error))
-            print("maximum available img count:", img_count)
+            # GET SIZES
+            error, ret = self.__cam.get_sizes()
+            print("get sizes: ", self.__cam.get_error_text(error))
+            print("X Resolution Actual: ", ret["xResAct"])
+            print("Y Resolution Actual: ", ret["yResAct"])
+            print("X Resolution Maximum: ", ret["xResMax"])
+            print("Y Resolution Maximum: ", ret["yResMax"])
+            self.xRes = ret["xResAct"]
+            self.yRes = ret["yResAct"]
+            self.xResMax = ret["xResMax"]
+            self.yResMax = ret["yResMax"]
 
-            if error != 0:
-                error = self.__cam.recorder_stop_record()
-                print("recorder stop:", self.__cam.get_error_text(error))
-                error = self.__cam.recorder_delete()
-                print("recorder delete:", self.__cam.get_error_text(error))
-                error, img_count = self.__cam.recorder_create()
-                print("recorder create:", self.__cam.get_error_text(error))
+            error = self.__cam.allocate_buffer(100)
+            print("allocate buffer: ",self.__cam.get_error_text(error))
 
-            error = self.__cam.recorder_init()
-            print("recorder init", self.__cam.get_error_text(error))
 
-            error = self.__cam.recorder_start_record()
-            print("recorder start record:", self.__cam.get_error_text(error))
 
-            error, ret = self.__cam.recorder_get_settings()
-            print("recorder get settings:", self.__cam.get_error_text(error))
-            print("recorder_mode: ", ret["recorder_mode"].value)
-            print("max_img_count: ", ret["max_img_count"].value)
-            print("req_img_count: ", ret["req_img_count"].value)
-            print("img_width: ", ret["img_width"].value)
-            print("img_height: ", ret["img_height"].value)
-
-            error, ret = self.__cam.recorder_get_image_size()
-            print("recorder get image size:", self.__cam.get_error_text(error))
-            print("img_width: ", ret["img_width"].value)
-            print("img_height: ", ret["img_height"].value)
-            self.img_width = ret["img_width"].value
-            self.img_height = ret["img_height"].value
+            # error, img_count = self.__cam.recorder_create()
+            # print("recorder create:", self.__cam.get_error_text(error))
+            # print("maximum available img count:", img_count)
+            #
+            # if error != 0:
+            #     error = self.__cam.recorder_stop_record()
+            #     print("recorder stop:", self.__cam.get_error_text(error))
+            #     error = self.__cam.recorder_delete()
+            #     print("recorder delete:", self.__cam.get_error_text(error))
+            #     error, img_count = self.__cam.recorder_create()
+            #     print("recorder create:", self.__cam.get_error_text(error))
+            #
+            # error = self.__cam.recorder_init()
+            # print("recorder init", self.__cam.get_error_text(error))
+            #
+            # error = self.__cam.recorder_start_record()
+            # print("recorder start record:", self.__cam.get_error_text(error))
+            #
+            # error, ret = self.__cam.recorder_get_settings()
+            # print("recorder get settings:", self.__cam.get_error_text(error))
+            # print("recorder_mode: ", ret["recorder_mode"].value)
+            # print("max_img_count: ", ret["max_img_count"].value)
+            # print("req_img_count: ", ret["req_img_count"].value)
+            # print("img_width: ", ret["img_width"].value)
+            # print("img_height: ", ret["img_height"].value)
+            #
+            # error, ret = self.__cam.recorder_get_image_size()
+            # print("recorder get image size:", self.__cam.get_error_text(error))
+            # print("img_width: ", ret["img_width"].value)
+            # print("img_height: ", ret["img_height"].value)
+            # self.img_width = ret["img_width"].value
+            # self.img_height = ret["img_height"].value
 
     def get_image(self):
 
