@@ -11,6 +11,7 @@
 import numpy as np
 import cv2
 from pathlib import Path
+import time
 
 # ============================================================================
 
@@ -21,13 +22,20 @@ WORKING_LINE_COLOR = (127, 127, 127)
 # ============================================================================
 
 class TransformCalculator:
-    def __init__(self, reference_frame, overlayed_frame):
-        self.reference_frame = reference_frame
-        self.overlayed_frame = overlayed_frame
+    def __init__(self, camera):
+        self.camera = camera
+
+        self.h = camera.img_height
+        self.w = camera.img_width
+
+        self.reference_frame = np.zeros((self.h,self.w))
+        self.overlayed_frame = np.zeros((self.h,self.w))
+
+        self.transform = None
 
         self.done = False # Flag signalling we're done
         self.current = (0, 0) # Current position, so we can draw the line-in-progress
-        self.reference_points = []
+        self.reference_points = [[100,100],[self.w//2,self.h-100],[self.w-100,100]]
         self.overlayed_points = []
 
         # ask if we want an affine or perspective transform here?
@@ -38,58 +46,60 @@ class TransformCalculator:
                 self.transform = np.load(f_in)
         else:
             self.transform = self.compute_transform()
+            print('in preprocessing: ', self.transform)
 
-    def on_mouse(self, event, x, y, flags, param):
+    def on_mouse(self, event, x, y, flags, params):
         # Mouse callback that gets called for every mouse event (i.e. moving, clicking, etc.)
-        frameID = param
 
         if self.done: # Nothing more to do
             return
 
         if event == cv2.EVENT_MOUSEMOVE:
-            # We want to be able to draw the line-in-progress, so update current mouse position
+            # update current mouse position
             self.current = (x, y)
 
         elif event == cv2.EVENT_LBUTTONDOWN:
             # Left click means adding a point at current position to the list of points
-
-            if frameID == 1:
-                print("Adding reference point #%d with position (%d,%d)" % (len(self.reference_points), x, y))
-                self.reference_points.append([x, y])
-                cv2.circle(self.reference_frame, (x, y), 5, (57, 255, 20), 5)
-                if len(self.reference_points) == 3 and len(self.overlayed_points) == 3:
-                    print("All points chosen.")
-                    self.done = True
-            elif frameID == 2:
-                print("Adding overlayed point #%d with position(%d,%d)" % (len(self.overlayed_points), x, y))
-                self.overlayed_points.append([x, y])
-                cv2.circle(self.overlayed_frame, (x, y), 5, (0, 255, 0), 5)
-                if len(self.reference_points) == 3 and len(self.overlayed_points) == 3:
-                    print("All points chosen.")
-                    self.done = True
+            print("Adding overlayed point #%d with position(%d,%d)" % (len(self.overlayed_points), x, y))
+            self.overlayed_points.append([x, y])
+            cv2.circle(self.overlayed_frame, (x, y), 5, (255, 255, 255), 5)
+            if len(self.overlayed_points) == 3:
+                print("All points chosen.")
+                self.done = True
 
     def compute_transform(self):
         # open the two frames -- numpy arrays
         cv2.namedWindow("Reference")
+        numbers = ['1', '2', '3']
+        for number, pt in zip(numbers,self.reference_points):
+            cv2.circle(self.reference_frame, (pt[0], pt[1]), 5, (255, 255, 255), 5)
+            cv2.putText(self.reference_frame, number,(pt[0]-10, pt[1]-10), cv2.FONT_HERSHEY_PLAIN, 6, (255, 255, 255))
         cv2.imshow("Reference", self.reference_frame)
 
         cv2.namedWindow("Overlayed")
         cv2.imshow("Overlayed", self.overlayed_frame)
+        cv2.setMouseCallback("Overlayed", self.on_mouse)
 
-        cv2.setMouseCallback("Reference", self.on_mouse, 1)
-        cv2.setMouseCallback("Overlayed", self.on_mouse, 2)
+        while not self.done:
+            time.sleep(.01)
 
-        while True:
-            # both windows are displaying the same img
+            self.overlayed_frame = self.camera.get_image()
+            self.overlayed_frame = np.asarray(self.overlayed_frame).reshape(self.h, self.w)
+            self.overlayed_frame.byteswap(inplace=True)
+            self.overlayed_frame = self.overlayed_frame.astype(np.uint8, copy=False)
+
             cv2.imshow("Reference", self.reference_frame)
             cv2.imshow("Overlayed", self.overlayed_frame)
+
             if cv2.waitKey(10) == 27 or self.done:
-                break
+                self.done = True
         cv2.destroyAllWindows()
 
-        print(self.reference_points, self.overlayed_points)
+        print(self.reference_points)
+        print(self.overlayed_points)
 
-        self.transform = cv2.getAffineTransform(np.array(self.reference_points, dtype=np.float32), np.array(self.overlayed_points, dtype=np.float32))
+        return cv2.getAffineTransform(np.array(self.reference_points, dtype=np.float32), np.array(self.overlayed_points, dtype=np.float32))
+
 
 class MaskCalculator:
     def __init__(self, display_frame):
@@ -104,7 +114,7 @@ class MaskCalculator:
         cv2.namedWindow(self.window_name, flags=cv2.CV_WINDOW_AUTOSIZE)
         cv2.imshow(self.window_name, np.zeros(CANVAS_SIZE, np.uint8))
         cv2.waitKey(1)
-        cv2.cv.SetMouseCallback(self.window_name, self.on_mouse)
+        cv2.SetMouseCallback(self.window_name, self.on_mouse)
 
         while(not self.done):
             # This is our drawing loop, we just continuously draw new images
@@ -133,31 +143,3 @@ class MaskCalculator:
 
         cv2.destroyWindow(self.window_name)
         return canvas
-
-# ============================================================================
-
-if __name__ == "__main__":
-
-    transformer = TransformCalculator(np.ones((100,100))+100,np.ones((100,100))+150)
-    masker = Mask
-#     pd = PolygonDrawer("Polygon")
-#     image = pd.run()
-#     cv2.imwrite("polygon.png", image)
-#     print("Polygon = %s" % pd.points)
-#
-# # TODO: multiple polygons
-#
-# # MASKING
-# # https://stackoverflow.com/questions/43443127/opencv-how-to-create-a-mask-in-the-shape-of-a-polygon
-#
-# # once you find the polygon(s) you want, create a mask, output the mask and apply to image
-#
-# cv::Mat mask = cv::Mat::zeros(img->rows, img->cols, CV_8U);
-# cv::Point pts[5] = {
-#     cv::Point(1, 6),
-#     cv::Point(2, 7),
-#     cv::Point(3, 8),
-#     cv::Point(4, 9),
-#     cv::Point(5, 10)
-# };
-# cv::fillConvexPoly( mask, pts, 5, cv::Scalar(1) );

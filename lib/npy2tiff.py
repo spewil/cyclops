@@ -52,5 +52,3 @@ with open(filename, 'rb') as f_in:
         # when we run out of loads
         except IOError:
             break
-    # save a list of images 
-    # tiff.imsave('images.tiff', np.array(frames))

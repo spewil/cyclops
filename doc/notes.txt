@@ -140,4 +140,44 @@ single camera class makes sense because
 	no more global variables 
 	handle exceptions better 
 		make populate stop if there's an error anywhere!!!
+
+~~~~~
+
+why does a single viewer work when not copying? 
+
+the problem seems to be that you're mutating the buffer object while its being read--
+however, if this were the case a single viewer would glitch as well, right?
+	test this
+
+theory-- because we use numpy asarray(), it's no longer pointing to the same object? 
+	this is easy to check with id() or in pycharm... 
+
+idea -- in the append function, just copy the incoming buffer, numpy-ize it, and 
+	then send it to the child threads / put it into queues 
+
+"I ran the threading overnight last night, and it ran for 12 hours without missing any frames or starting to lag. How I had it set up was grab the image in the fast looping thread, and store that. Then in the slow thread i would grab a frame as fast as the tracking could loop, which was about 60ms."
+
+"Memory allocation of large images can get expensive. Don't allocate new images each time you read something in. Instead, find the size of the image, allocate a numpy array to store the image, and process it. Reuse the same array each time you grab a new image. Similarly, when doing processing steps that return a new image (like splitting, or colorspace transforms, or whatever), allocate your buffers once, and reuse the same buffers over and over again by using the 'dst' parameter. 
+Be wary of accessing too many non-local variables in python. In our robot code (which is running python), we found that accessing a lot of things at module level instead of local level caused noticeable slowness. Presumably this is because each time python needs to do multiple lookups in each scope to find things.
+Keep in mind that in python 2.7, because of the GIL multithreading doesn't buy you a lot unless you are I/O bound"
+
+
+~~~ profiling 
+
+use CProfile on functions separately 
+make .profile files 
+use stats.add on the files 
+use SnakeViz to view added .prof files 
+
+~~~ theory
+
+get_image is overwriting the memory block 
+
+~~~
+
+word  = 16 bits
+dword = 32 bits
+
+
+
 		
