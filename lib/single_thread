@@ -32,11 +32,11 @@ def convert_npy_to_tiff(npy_file):
             try:
                 frame = np.load(f_in).reshape(h, w)
                 tiff.imsave(os.path.join(os.path.abspath(os.path.join(filename, os.pardir)),out_filename) , frame, append=True)
-                print("frame:", idx)
+                # print("frame:", idx)
                 idx += 1
             # when we run out of loads
             except IOError:
-                print("No more frames.")
+                print("Conversion complete.")
                 break
 
 if __name__ == '__main__':
@@ -47,7 +47,7 @@ if __name__ == '__main__':
     binning = 1
     roi_tuple = (0, 0, MAX_CAM_X_RES, MAX_CAM_Y_RES)
 
-    image_name = 'test_6.npy'
+    image_name = 'test_12.npy'
     image_folder = '6_7'  # input('Enter experiment name: ')
     folder_path = os.path.join(os.path.normpath('C:/Users/Kelly_group01/Documents/'), image_folder)
     image_path = os.path.join(os.path.normpath('C:/Users/Kelly_group01/Documents/'), image_folder, image_name)
@@ -76,32 +76,29 @@ if __name__ == '__main__':
 
     FPS_BOT.start()
     for i in range(100):
-        for buffer in camera.buffers:
 
-            # reset the buffer event
-            camera.update_buffer()
+        # convert and grab
+        array = camera.get_latest_array()
 
-            # convert and grab
-            array = camera.latest_array()
+        # # display
+        # cv2.imshow('Frame', array)
+        # if cv2.waitKey(1) is CV_ESC_KEY:
+        #     break
 
-            # # display
-            # cv2.imshow('Frame', array)
-            # if cv2.waitKey(1) is CV_ESC_KEY:
-            #     break
+        # # display
+        # cv2.imshow('Control', (array <= threshold).astype(float))
+        # if cv2.waitKey(1) is CV_ESC_KEY:
+        #     break
 
-            # # display
-            # cv2.imshow('Control', (array <= threshold).astype(float))
-            # if cv2.waitKey(1) is CV_ESC_KEY:
-            #     break
+        # 2GB limit on files...
+        # have to break them up
+        np.save(file_buffer, array)
 
-            # save
-            np.save(file_buffer, array)
+        idx += 1
 
-            idx += 1
-
-            FPS_BOT.update()
+        FPS_BOT.update()
     FPS_BOT.stop()
-
+    camera.close()
     cv2.destroyAllWindows()
     file_buffer.close()
 

@@ -7,12 +7,15 @@ import ctypes
 import numpy as np
 from collections import deque
 
-from lib import pco_sdk
+try:
+    import pco_sdk
+except ImportError:
+    from lib import pco_sdk
 
 MAX_CAM_X_RES = 2560
 MAX_CAM_Y_RES = 2160
 
-NUM_BUFFERS = 1
+NUM_BUFFERS = 4
 
 class PcoCamError(Exception):
     pass
@@ -35,14 +38,12 @@ class Camera:
         self.buffers = []
 
         error = self.__cam.reset_lib()
-        print("reset lib:", self.__cam.get_error_text(error))
-        error = self.__cam.open_camera()
-        if error:
-            raise PcoCamError("open camera:", self.__cam.get_error_text(error))
 
-        # TODO: implement "if error" for each setup step below
+        # TODO: catch errors with PcoCamError
         if error == 0:
-
+            print("reset lib:", self.__cam.get_error_text(error))
+            error = self.__cam.open_camera()
+            print("open camera:", self.__cam.get_error_text(error))
             error = self.__cam.set_recording_state(0)
             print("set recording state:", self.__cam.get_error_text(error))
             error = self.__cam.reset_settings_to_default()
@@ -109,6 +110,12 @@ class Camera:
             error = self.__cam.arm()
             print("arm:", self.__cam.get_error_text(error))
 
+            # Clean up existing buffers
+            self.__cam.set_recording_state(0)
+            self.__cam.cancel_images()
+            for buf in self.buffers:
+                self.__cam.free_buffer(buf.idx)
+
             # set up buffers
             self.buffer_size = self.xRes*self.yRes*16
             for i in range(NUM_BUFFERS):
@@ -148,7 +155,7 @@ class Camera:
             self.close()
             raise PcoCamError('An error occurred upon recording start: ',self.__cam.get_error_text(error))
 
-    def update_buffer(self, timeout=None):
+    def get_latest_array(self, copy=False, timeout=None):
         '''
         takes the most recent buffer in the queue, waits for it to be finished,
         then resets its event, saves the frame as the latest, and adds the buffer
@@ -174,16 +181,18 @@ class Camera:
         else:
             raise Exception("Failed to grab image.")
 
-        self.latest_buffer = self.queue.popleft() # left is new, right is old
+        latest_buffer = self.queue.popleft() # left is new, right is old
+
         self.add_buffer_to_queue(buf)
 
-        return True
-
-    def latest_array(self):
-        buf = self.latest_buffer
-        return np.asarray(memoryview((ctypes.c_uint16 * (buf.size//16)).from_address(buf.address)), dtype=np.uint16).reshape(self.yRes, self.xRes)
+        self.latest_array = np.asarray((ctypes.c_uint16 * (latest_buffer.size // 16))
+                                       .from_address(latest_buffer.address))#.byteswap(True).astype(np.uint8, copy=False)
+        return self.latest_array.reshape(self.yRes, self.xRes)
 
     def stop_record(self):
+        error = self.__cam.cancel_images()
+        print("cancel images:", self.__cam.get_error_text(error))
+
         error = self.__cam.set_recording_state(0)
         print("set recording state to OFF:", self.__cam.get_error_text(error))
         # buffers still allocated, could still transfer images
@@ -193,13 +202,8 @@ class Camera:
             error = self.__cam.free_buffer(buffer.idx)
             print("buffer at ",buffer.address,"closed: ",self.__cam.get_error_text(error))
 
-        error = self.__cam.cancel_images()
-        print("cancel images:", self.__cam.get_error_text(error))
-
         error = self.__cam.close_camera()
         print("close camera:", self.__cam.get_error_text(error))
 
         error = self.__cam.reset_lib()
         print("reset lib:", self.__cam.get_error_text(error))
-
-        sys.exit()

@@ -143,3 +143,30 @@ class MaskCalculator:
 
         cv2.destroyWindow(self.window_name)
         return canvas
+
+
+#     def setup(self):
+#         print('calculating transform...')
+#
+#         # compute affine transform
+#         # output registration pattern (black with 3 white dots)
+#         # show image from camera, click dots and save locs
+#         # save transform in self.transform
+#         transformer = preprocessing.TransformCalculator(self.camera)
+#         # note the dimensionality of the transform here!
+#         # self.transform = transformer.transform
+#         self.transform = np.array([transformer.transform])
+#         print('in cyclops: ', self.transform)
+#
+#         while True:
+#
+#             frame = self.camera.get_image()
+#             frame = np.asarray(frame).reshape(self.h, self.w)
+#             frame.byteswap(inplace=True)
+#             frame = frame.astype(np.uint8, copy=False)
+#             # note the dimensionality of the transform here
+#             frame = cv2.transform(frame, self.transform, (self.w, self.h))
+#             cv2.imshow("Preview Transformation", frame)
+#             if cv2.waitKey(10) == 27:
+#                 break
+#         cv2.destroyAllWindows()
