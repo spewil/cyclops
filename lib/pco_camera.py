@@ -1,22 +1,29 @@
 # -*- coding: utf-8 -*-
 
+import sys
+import win32event
+
+import ctypes
+import numpy as np
 from collections import deque
 
 from lib import pco_sdk
 
 MAX_CAM_X_RES = 2560
 MAX_CAM_Y_RES = 2160
+
 NUM_BUFFERS = 1
 
 class PcoCamError(Exception):
     pass
 
 class BufferInfo(object):
-    def __init__(self, num, pointer, address, event):
+    def __init__(self, num, pointer, address, event, size):
         self.idx = num
         self. pointer = pointer
         self.address = address
         self.event = event
+        self.size = size
 
 class Camera:
 
@@ -24,7 +31,7 @@ class Camera:
 
     def __init__(self, frame_rate_mHz, exposure_time_ns, x_binning, y_binning, x0, y0, x1, y1):
 
-        self.queue = deque([], maxlen=100)
+        self.queue = deque([], maxlen=NUM_BUFFERS) # deque of BufferInfo objects
         self.buffers = []
 
         error = self.__cam.reset_lib()
@@ -56,9 +63,6 @@ class Camera:
             error = self.__cam.set_timestamp_mode(mode)
             print("set timestamp mode: ",self.__cam.get_error_text(error))
             print("timestamp mode: ",mode)
-
-            error = self.__cam.set_trigger_mode(0)
-            print("set trigger mode: ", self.__cam.get_error_text(error))
 
             # # BINNING
             # error, ret = self.__cam.set_binning(2, 2)
@@ -109,44 +113,93 @@ class Camera:
             self.buffer_size = self.xRes*self.yRes*16
             for i in range(NUM_BUFFERS):
                 error, ret = self.__cam.allocate_buffer(self.buffer_size)
-                print("allocated buffers", self.__cam.get_error_text(error))
                 if error == 0:
                     idx = ret['buffer_idx']
                     pointer = ret['buffer_p']
                     address = ret['buffer_address']
                     event = ret['event']
+                    size = ret['size']
                     print("allocated buffer address: ", address)
-                    self.buffers.append(BufferInfo(idx, pointer, address, event))
+                    self.buffers.append(BufferInfo(idx, pointer, address, event, size))
+                else:
+                    print("error allocating buffer", self.__cam.get_error_text(error))
 
-    def add_buffers_to_queue(self):
-        for buffer in self.buffers:
-            error = self.__cam.add_buffer(buffer.idx, self.xRes, self.yRes)
-            # print("added buffer at address || index: ", buffer.address, "||", buffer.idx, ": ", self.__cam.get_error_text(error))
-            self.queue.append(buffer)
+    def add_buffer_to_queue(self, buf):
+
+        # add buffer to camera driver queue
+        error = self.__cam.add_buffer(buf.idx, self.xRes, self.yRes)
+        if error != 0:
+            self.stop_record()
+            self.close()
+            raise PcoCamError("error adding buffer: ", self.__cam.get_error_text(error))
+
+        self.queue.append(buf) # move buffer to the "end" of our queue
 
     def start_record(self):
 
+        for buf in self.buffers:
+            self.add_buffer_to_queue(buf)
+
         error = self.__cam.set_recording_state(1)
-        print("set recording state:", self.__cam.get_error_text(error))
+        print("set recording state to RUN:", self.__cam.get_error_text(error))
 
         if error:
             self.stop_record()
             self.close()
+            raise PcoCamError('An error occurred upon recording start: ',self.__cam.get_error_text(error))
 
-        self.add_buffers_to_queue()
+    def update_buffer(self, timeout=None):
+        '''
+        takes the most recent buffer in the queue, waits for it to be finished,
+        then resets its event, saves the frame as the latest, and adds the buffer
+        to the end of the queue, effectively rotating the queue.
+
+        :param timeout: time in ms to wait before throwing an error
+        :return: True if successful
+        '''
+        buf = self.queue[0] # grab the "first" buffer
+
+        timeout = win32event.INFINITE if timeout is None else max(0, timeout)
+        ret = win32event.WaitForSingleObject(buf.event, int(timeout))
+        if ret == win32event.WAIT_OBJECT_0:
+            error, ret = self.__cam.get_buffer_status(buf.idx)
+            drv_status = ret['drv_status']
+            if error !=0:
+                raise PcoCamError("Get Buffer Status Failed: ", self.__cam.get_error_text(error))
+            if drv_status != 0:
+                raise PcoCamError(self.__cam.get_error_text(drv_status))
+            win32event.ResetEvent(buf.event) # resent the buffer event
+        elif ret == win32event.WAIT_TIMEOUT:
+            raise TimeoutError("Wait for buffer timed out.")
+        else:
+            raise Exception("Failed to grab image.")
+
+        self.latest_buffer = self.queue.popleft() # left is new, right is old
+        self.add_buffer_to_queue(buf)
+
+        return True
+
+    def latest_array(self):
+        buf = self.latest_buffer
+        return np.asarray(memoryview((ctypes.c_uint16 * (buf.size//16)).from_address(buf.address)), dtype=np.uint16).reshape(self.yRes, self.xRes)
 
     def stop_record(self):
         error = self.__cam.set_recording_state(0)
-        print("set recording state:", self.__cam.get_error_text(error))
+        print("set recording state to OFF:", self.__cam.get_error_text(error))
+        # buffers still allocated, could still transfer images
 
     def close(self):
+        for buffer in self.buffers:
+            error = self.__cam.free_buffer(buffer.idx)
+            print("buffer at ",buffer.address,"closed: ",self.__cam.get_error_text(error))
+
+        error = self.__cam.cancel_images()
+        print("cancel images:", self.__cam.get_error_text(error))
 
         error = self.__cam.close_camera()
         print("close camera:", self.__cam.get_error_text(error))
 
-        for buffer in self.buffers:
-            error = self.__cam.free_buffer(buffer.idx)
-            print("buffer ",buffer.idx,"closed: ",self.__cam.get_error_text(error))
-
         error = self.__cam.reset_lib()
         print("reset lib:", self.__cam.get_error_text(error))
+
+        sys.exit()

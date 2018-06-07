@@ -1,9 +1,13 @@
 # -*- coding: utf-8 -*-
 
+import os
+import time
+
 import cv2
 import numpy as np
-import time
 import ctypes
+import pathlib
+import tifffile as tiff
 
 from lib import pco_camera
 from lib import FPS
@@ -17,6 +21,24 @@ CV_ESC_KEY = 27
 
 FPS_BOT = FPS.FPS()
 
+def convert_npy_to_tiff(npy_file):
+    h = 2160
+    w = 2560
+    filename = npy_file
+    out_filename = os.path.splitext(npy_file)[0]+'.tiff'
+    idx = 1
+    with open(filename, 'rb') as f_in:
+        while True:
+            try:
+                frame = np.load(f_in).reshape(h, w)
+                tiff.imsave(os.path.join(os.path.abspath(os.path.join(filename, os.pardir)),out_filename) , frame, append=True)
+                print("frame:", idx)
+                idx += 1
+            # when we run out of loads
+            except IOError:
+                print("No more frames.")
+                break
+
 if __name__ == '__main__':
 
     frame_rate_mHz = int(40e3)
@@ -25,38 +47,65 @@ if __name__ == '__main__':
     binning = 1
     roi_tuple = (0, 0, MAX_CAM_X_RES, MAX_CAM_Y_RES)
 
+    image_name = 'test_6.npy'
+    image_folder = '6_7'  # input('Enter experiment name: ')
+    folder_path = os.path.join(os.path.normpath('C:/Users/Kelly_group01/Documents/'), image_folder)
+    image_path = os.path.join(os.path.normpath('C:/Users/Kelly_group01/Documents/'), image_folder, image_name)
+    # save path
+    if os.path.exists(image_path):
+        raise ValueError('File {} already exists in this directory!'
+                         'Designate new .npy filename.'.format(image_path))
+
+    # make the folder if it doesn't exist
+    pathlib.Path(folder_path).mkdir(parents=True, exist_ok=True)
+
     # set up camera
     camera = pco_camera.Camera(frame_rate_mHz, exposure_time_ns, binning, binning, *roi_tuple)
 
+    cv2.namedWindow("Frame")
+    cv2.namedWindow("Control")
+
     # start recording
     camera.start_record()
+    # buffers are now allocated
 
     # add to queue in a loop
+    idx = 1
+
+    file_buffer =  open(image_path, 'ab')
+
     FPS_BOT.start()
-    idx = 0
-    for i in range(1000):
-        # if there's a new frame to add
-        # time.sleep(0.001)
+    for i in range(100):
+        for buffer in camera.buffers:
 
-        camera.add_buffers_to_queue()
+            # reset the buffer event
+            camera.update_buffer()
 
+            # convert and grab
+            array = camera.latest_array()
 
-        # convert to numpy
-        buf_info = camera.queue.popleft()
+            # # display
+            # cv2.imshow('Frame', array)
+            # if cv2.waitKey(1) is CV_ESC_KEY:
+            #     break
 
-        # I expect to read out 16*X*Y bytes from this address
-        # how can I read out bytes and get them into numpy?
+            # # display
+            # cv2.imshow('Control', (array <= threshold).astype(float))
+            # if cv2.waitKey(1) is CV_ESC_KEY:
+            #     break
 
-        array = np.frombuffer(memoryview((ctypes.c_uint16 * (camera.xRes*camera.yRes)).from_address(buf_info.address)), dtype=np.uint16).reshape((camera.yRes, camera.xRes))
+            # save
+            np.save(file_buffer, array)
 
-        # cv2.putText(array, 'Frame: {}'.format(idx), (1000, 1000), cv2.FONT_HERSHEY_PLAIN, 2, (0, 0, 255))
-        # cv2.imshow('Frame', array)
+            idx += 1
 
-        idx += 1
-        #
-        # if cv2.waitKey(1) is CV_ESC_KEY:
-        #     break
-        FPS_BOT.update()
-
+            FPS_BOT.update()
     FPS_BOT.stop()
-    print("Frames per second processing: ", FPS_BOT.fps())
+
+    cv2.destroyAllWindows()
+    file_buffer.close()
+
+    print("Frames per second over %d frames: %6.2f" % (idx-1, FPS_BOT.fps()))
+
+    print("converting to tiff... ")
+    convert_npy_to_tiff(image_path)

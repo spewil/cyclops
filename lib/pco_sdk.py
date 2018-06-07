@@ -145,8 +145,20 @@ class sdk:
     free buffer
     
     '''
-    def get_buffer_info(self):
-        pass
+
+    def get_buffer_status(self, buf_num):
+        self.SC2_Cam.PCO_GetBufferStatus.argtypes = [wintypes.HANDLE, wintypes.SHORT, C.POINTER(C.c_uint32), C.POINTER(C.c_uint32)]
+        sBufNr = wintypes.SHORT(buf_num)
+        dwStatusDLL = C.c_uint32()
+        dwStatusDrv = C.c_uint32()
+        error = self.SC2_Cam.PCO_GetBufferStatus(self.camera_handle, sBufNr, dwStatusDLL, dwStatusDrv)
+        ret = {}
+        if error == 0:
+            ret.update({'dll_status': dwStatusDLL.value})
+            ret.update({'drv_status': dwStatusDrv.value})
+            # print(dwStatusDLL.value)
+            # print(dwStatusDrv.value)
+        return error, ret
 
     def allocate_buffer(self, buf_size):
         self.SC2_Cam.PCO_AllocateBuffer.argtypes = [wintypes.HANDLE, C.POINTER(C.c_int), C.c_uint32, C.POINTER(C.POINTER(C.c_uint16)), C.POINTER(wintypes.HANDLE)]
@@ -161,11 +173,12 @@ class sdk:
             ret.update({'buffer_p': wBuf})
             ret.update({'buffer_address': C.addressof(wBuf.contents)})
             ret.update({'event': hEvent.value})
+            ret.update({'size': buf_size})
         return error, ret
 
     def free_buffer(self, buf_num):
-        self.SC2_Cam.PCO_FreeBuffer.argtypes = [wintypes.HANDLE, wintypes.SHORT]
-        sBufNr = wintypes.SHORT(buf_num)
+        self.SC2_Cam.PCO_FreeBuffer.argtypes = [wintypes.HANDLE, C.c_int]
+        sBufNr = C.c_int(buf_num)
         error = self.SC2_Cam.PCO_FreeBuffer(self.camera_handle, sBufNr)
         return error
 
@@ -181,7 +194,7 @@ class sdk:
         return error
 
     def cancel_images(self):
-        self.SC2_Cam.PCO_CancelImages.argtypes = [wintypes.HANDLE]
+        self.SC2_Cam.PCO_CancelImages.argtypes = [C.POINTER(C.c_void_p)]
         error = self.SC2_Cam.PCO_CancelImages(self.camera_handle)
         return error
 
