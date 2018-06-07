@@ -156,8 +156,6 @@ class sdk:
         if error == 0:
             ret.update({'dll_status': dwStatusDLL.value})
             ret.update({'drv_status': dwStatusDrv.value})
-            # print(dwStatusDLL.value)
-            # print(dwStatusDrv.value)
         return error, ret
 
     def allocate_buffer(self, buf_size):

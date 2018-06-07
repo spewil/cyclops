@@ -185,8 +185,7 @@ class Camera:
 
         self.add_buffer_to_queue(buf)
 
-        self.latest_array = np.asarray((ctypes.c_uint16 * (latest_buffer.size // 16))
-                                       .from_address(latest_buffer.address))#.byteswap(True).astype(np.uint8, copy=False)
+        self.latest_array = np.asarray((ctypes.c_uint16 * (latest_buffer.size // 16)).from_address(latest_buffer.address))
         return self.latest_array.reshape(self.yRes, self.xRes)
 
     def stop_record(self):

@@ -41,28 +41,33 @@ def convert_npy_to_tiff(npy_file):
 
 if __name__ == '__main__':
 
-    frame_rate_mHz = int(40e3)
+    frame_rate_mHz = int(10e3)
     exposure_time_ns = int(1e7)
     threshold = 100.
     binning = 1
     roi_tuple = (0, 0, MAX_CAM_X_RES, MAX_CAM_Y_RES)
 
-    image_name = 'test_12.npy'
-    image_folder = '6_7'  # input('Enter experiment name: ')
-    folder_path = os.path.join(os.path.normpath('C:/Users/Kelly_group01/Documents/'), image_folder)
-    image_path = os.path.join(os.path.normpath('C:/Users/Kelly_group01/Documents/'), image_folder, image_name)
-    # save path
-    if os.path.exists(image_path):
-        raise ValueError('File {} already exists in this directory!'
-                         'Designate new .npy filename.'.format(image_path))
+    save = False
+    display = True
+    process = True
 
-    # make the folder if it doesn't exist
-    pathlib.Path(folder_path).mkdir(parents=True, exist_ok=True)
+    if save:
+        image_name = 'test_12.npy'
+        image_folder = '6_7'  # input('Enter experiment name: ')
+        folder_path = os.path.join(os.path.normpath('C:/Users/Kelly_group01/Documents/'), image_folder)
+        image_path = os.path.join(os.path.normpath('C:/Users/Kelly_group01/Documents/'), image_folder, image_name)
+        # save path
+        if os.path.exists(image_path):
+            raise ValueError('File {} already exists in this directory!'
+                             'Designate new .npy filename.'.format(image_path))
+
+        # make the folder if it doesn't exist
+        pathlib.Path(folder_path).mkdir(parents=True, exist_ok=True)
 
     # set up camera
     camera = pco_camera.Camera(frame_rate_mHz, exposure_time_ns, binning, binning, *roi_tuple)
 
-    cv2.namedWindow("Frame")
+    cv2.namedWindow("Preview")
     cv2.namedWindow("Control")
 
     # start recording
@@ -71,28 +76,28 @@ if __name__ == '__main__':
 
     # add to queue in a loop
     idx = 1
-
-    file_buffer =  open(image_path, 'ab')
-
+    if save:
+        file_buffer =  open(image_path, 'ab')
     FPS_BOT.start()
     for i in range(100):
 
         # convert and grab
         array = camera.get_latest_array()
 
-        # # display
-        # cv2.imshow('Frame', array)
-        # if cv2.waitKey(1) is CV_ESC_KEY:
-        #     break
+        if display:
+            cv2.imshow('Preview', array)
+            if cv2.waitKey(1) is CV_ESC_KEY:
+                break
 
-        # # display
-        # cv2.imshow('Control', (array <= threshold).astype(float))
-        # if cv2.waitKey(1) is CV_ESC_KEY:
-        #     break
+        if process:
+            control = (array <= threshold).astype(int)
+            print(array[500:510,500:510])
+            cv2.imshow('Control', control)
+            if cv2.waitKey(1) is CV_ESC_KEY:
+                break
 
-        # 2GB limit on files...
-        # have to break them up
-        np.save(file_buffer, array)
+        if save:
+            np.save(file_buffer, array)
 
         idx += 1
 
@@ -100,9 +105,9 @@ if __name__ == '__main__':
     FPS_BOT.stop()
     camera.close()
     cv2.destroyAllWindows()
-    file_buffer.close()
-
     print("Frames per second over %d frames: %6.2f" % (idx-1, FPS_BOT.fps()))
 
-    print("converting to tiff... ")
-    convert_npy_to_tiff(image_path)
+    if save:
+        file_buffer.close()
+        print("converting to tiff... ")
+        convert_npy_to_tiff(image_path)
