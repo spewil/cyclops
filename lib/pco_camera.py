@@ -6,6 +6,7 @@ import win32event
 import ctypes
 import numpy as np
 from collections import deque
+from cffi import FFI
 
 try:
     import pco_sdk
@@ -16,6 +17,8 @@ MAX_CAM_X_RES = 2560
 MAX_CAM_Y_RES = 2160
 
 NUM_BUFFERS = 4
+
+ffi = FFI()
 
 class PcoCamError(Exception):
     pass
@@ -29,14 +32,12 @@ class BufferInfo(object):
         self.size = size
 
 class Camera:
-
     __cam = pco_sdk.sdk()
-
     def __init__(self, frame_rate_mHz, exposure_time_ns, x_binning, y_binning, x0, y0, x1, y1):
-
+        self.h = y1-y0+1
+        self.w = x1-x0+1
         self.queue = deque([], maxlen=NUM_BUFFERS) # deque of BufferInfo objects
         self.buffers = []
-
         error = self.__cam.reset_lib()
 
         # TODO: catch errors with PcoCamError
@@ -65,28 +66,29 @@ class Camera:
             print("set timestamp mode: ",self.__cam.get_error_text(error))
             print("timestamp mode: ",mode)
 
-            # # BINNING
-            # error, ret = self.__cam.set_binning(2, 2)
-            # print("set binning: ", self.__cam.get_error_text(error))
-            # print("desired x_binning: ", x_binning)
-            # print("desired y_binning: ", y_binning)
-            #
-            # # ROI
-            # error = self.__cam.set_roi(x0, y0, x1, y1)
-            # print("set roi:", self.__cam.get_error_text(error))
+            # BINNING
+            error, ret = self.__cam.set_binning(x_binning, y_binning)
+            print("set binning: ", self.__cam.get_error_text(error))
+            print("desired x_binning: ", x_binning)
+            print("desired y_binning: ", y_binning)
+
+            # ROI
+            error = self.__cam.set_roi(x0, y0, x1, y1)
+            print("desired roi: ", x0, y0, x1, y1)
+            print("set roi:", self.__cam.get_error_text(error))
 
             # TODO: check if current =/= desired
-            # error, ret = self.__cam.get_binning()
-            # print("get binning: ", self.__cam.get_error_text(error))
-            # print("current x_binning: ",ret["x_binning"])
-            # print("current y_binning: ",ret["y_binning"])
+            error, ret = self.__cam.get_binning()
+            print("get binning: ", self.__cam.get_error_text(error))
+            print("current x_binning: ",ret["x_binning"])
+            print("current y_binning: ",ret["y_binning"])
             error, ret = self.__cam.get_frame_rate()
             print("get framerate: ", self.__cam.get_error_text(error))
             print("current framerate_mHz: ",ret["frame rate mHz"])
             # print("current exposure_ns: ",ret["exposure time ns"])
-            # error, ret = self.__cam.get_roi()
-            # print("get roi: ", self.__cam.get_error_text(error))
-            # print("current roi:",ret["x0"],ret["y0"],ret["x1"],ret["y1"])
+            error, ret = self.__cam.get_roi()
+            print("get roi: ", self.__cam.get_error_text(error))
+            print("current roi:",ret["x0"],ret["y0"],ret["x1"],ret["y1"])
 
             # GET SIZES
             error, ret = self.__cam.get_sizes()
@@ -110,30 +112,7 @@ class Camera:
             error = self.__cam.arm()
             print("arm:", self.__cam.get_error_text(error))
 
-            # Clean up existing buffers
-            self.__cam.set_recording_state(0)
-            self.__cam.cancel_images()
-            for buf in self.buffers:
-                self.__cam.free_buffer(buf.idx)
-
-            # set up buffers
-            self.buffer_size = self.xRes*self.yRes*16
-            for i in range(NUM_BUFFERS):
-                error, ret = self.__cam.allocate_buffer(self.buffer_size)
-                if error == 0:
-                    idx = ret['buffer_idx']
-                    pointer = ret['buffer_p']
-                    address = ret['buffer_address']
-                    event = ret['event']
-                    size = ret['size']
-                    print("allocated buffer address: ", address)
-                    self.buffers.append(BufferInfo(idx, pointer, address, event, size))
-                else:
-                    print("error allocating buffer", self.__cam.get_error_text(error))
-
     def add_buffer_to_queue(self, buf):
-
-        # add buffer to camera driver queue
         error = self.__cam.add_buffer(buf.idx, self.xRes, self.yRes)
         if error != 0:
             self.stop_record()
@@ -143,6 +122,19 @@ class Camera:
         self.queue.append(buf) # move buffer to the "end" of our queue
 
     def start_record(self):
+        self.buffer_size = self.xRes * self.yRes * 16
+        for i in range(NUM_BUFFERS):
+            error, ret = self.__cam.allocate_buffer(self.buffer_size)
+            if error == 0:
+                idx = ret['buffer_idx']
+                pointer = ret['buffer_p']
+                address = ret['buffer_address']
+                event = ret['event']
+                size = ret['size']
+                print("allocated buffer address: ", address)
+                self.buffers.append(BufferInfo(idx, pointer, address, event, size))
+            else:
+                print("error allocating buffer", self.__cam.get_error_text(error))
 
         for buf in self.buffers:
             self.add_buffer_to_queue(buf)
@@ -160,12 +152,12 @@ class Camera:
         takes the most recent buffer in the queue, waits for it to be finished,
         then resets its event, saves the frame as the latest, and adds the buffer
         to the end of the queue, effectively rotating the queue.
-
-        :param timeout: time in ms to wait before throwing an error
+:
+        param copy: copy the frame or not
+         :param timeout: time in ms to wait before throwing an error
         :return: True if successful
         '''
         buf = self.queue[0] # grab the "first" buffer
-
         timeout = win32event.INFINITE if timeout is None else max(0, timeout)
         ret = win32event.WaitForSingleObject(buf.event, int(timeout))
         if ret == win32event.WAIT_OBJECT_0:
@@ -180,29 +172,32 @@ class Camera:
             raise TimeoutError("Wait for buffer timed out.")
         else:
             raise Exception("Failed to grab image.")
-
-        latest_buffer = self.queue.popleft() # left is new, right is old
-
+        latest_buffer = self.queue.popleft()
         self.add_buffer_to_queue(buf)
-
-        self.latest_array = np.asarray((ctypes.c_uint16 * (latest_buffer.size // 16)).from_address(latest_buffer.address))
-        return self.latest_array.reshape(self.yRes, self.xRes)
+        self.latest_array = np.asarray((ctypes.c_uint16*(latest_buffer.size//16)).from_address(latest_buffer.address)).newbyteorder().astype(dtype=np.uint8)
+        if copy:
+            return self.latest_array.reshape(self.yRes, self.xRes)[:]
+        else:
+            return self.latest_array.reshape(self.yRes, self.xRes)
 
     def stop_record(self):
+        error = self.__cam.set_recording_state(0)
+        print("set recording state to OFF:", self.__cam.get_error_text(error))
+
+        self.queue.clear()
+
         error = self.__cam.cancel_images()
         print("cancel images:", self.__cam.get_error_text(error))
 
-        error = self.__cam.set_recording_state(0)
-        print("set recording state to OFF:", self.__cam.get_error_text(error))
-        # buffers still allocated, could still transfer images
-
-    def close(self):
         for buffer in self.buffers:
             error = self.__cam.free_buffer(buffer.idx)
-            print("buffer at ",buffer.address,"closed: ",self.__cam.get_error_text(error))
+            print("buffer at",buffer.address,"freed: ",self.__cam.get_error_text(error))
 
+        self.buffers = []
+
+    def close(self):
         error = self.__cam.close_camera()
         print("close camera:", self.__cam.get_error_text(error))
-
-        error = self.__cam.reset_lib()
-        print("reset lib:", self.__cam.get_error_text(error))
+        #
+        # error = self.__cam.reset_lib()
+        # print("reset lib:", self.__cam.get_error_text(error))

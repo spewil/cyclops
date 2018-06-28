@@ -60,11 +60,7 @@ class GUI(QMainWindow):
         self.height = 480
 
         self.control_running = False
-
         self.label = QLabel(self)
-
-        self.begin = QPoint()
-        self.end = QPoint()
 
         # 1 - create Worker and Thread inside the GUI
         self.worker = Worker()  # no parent!
@@ -102,6 +98,18 @@ class GUI(QMainWindow):
         button.move(300, 70)
         button.clicked.connect(self.make_control_window)
 
+        button = QPushButton('Open Control View', self)
+        button.setToolTip('Opens a new dialog with ROI')
+        button.move(400, 170)
+        button.clicked.connect(self.get_ROI)
+
+    def get_ROI(self):
+        cap = cv2.VideoCapture(0)
+        ret, frame = cap.read()
+        showCrosshair = False
+        fromCenter = False
+        rect = cv2.selectROI("Image", frame, fromCenter, showCrosshair)
+
     def display_image(self, pixmap):
         self.label.setPixmap(pixmap)
         if self.control_running:
@@ -111,31 +119,6 @@ class GUI(QMainWindow):
     def make_control_window(self):
         self.control_running = True
         self.control_window = SecondWindow()
-
-    def paintEvent(self, event):
-        qp = QPainter(self)
-        br = QBrush(QColor(100, 10, 10, 40))
-        qp.setBrush(br)
-        qp.drawRect(QRect(self.begin, self.end))
-
-    def mousePressEvent(self, event):
-        self.begin = event.pos()
-        self.end = event.pos()
-        self.update()
-
-    def mouseMoveEvent(self, event):
-        self.end = event.pos()
-        self.update()
-
-    def mouseReleaseEvent(self, event):
-        self.begin = event.pos()
-        self.end = event.pos()
-        print("coords: ", self.begin, self.end)
-        if not self.begin == self.end:
-            self.update()
-        else:
-            pass
-            # coords are the image size
 
 
 app = QApplication(sys.argv)
