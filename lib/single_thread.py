@@ -129,7 +129,6 @@ def populate_settings_dict():
     settings_dict['frame_rate_mHz'] = int(int(input("Enter framerate in Hertz."))*1e3)
     settings_dict['exposure_time_ns'] = int(int(input("Enter exposure time in milliseconds."))*1e6)
     settings_dict['binning'] = int(input("Enter binning (1, 2 or 4 are nice)."))
-    print(settings_dict)
     return settings_dict
 
 def run():
@@ -287,7 +286,7 @@ def run():
         if display:
             if idx % 10 == 0:
                 cv2.imshow("Preview", array)
-                if cv2.waitKey(1) is CV_d_KEY:
+                if cv2.waitKey(1) is CV_ENT_KEY:
                     display = False
 
         if control_type is 'c':
@@ -317,6 +316,9 @@ def run():
 
         idx += 1
         FPS_BOT.update()
+
+    if control_type is 'o':
+        p.join()
 
     FPS_BOT.stop()
     camera.close()
