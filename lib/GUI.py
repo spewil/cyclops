@@ -151,7 +151,7 @@ class GUI(QWidget):
         right_H_layout.addWidget(right_left_button)
         right_H_layout.addWidget(right_right_button)
 
-        left_label = QLabel('Left Edge')
+        left_label = QLabel('Left Edge', self)
         left_label.setAlignment(Qt.AlignCenter)
         middle_label = QLabel('Height')
         middle_label.setAlignment(Qt.AlignCenter)
@@ -160,10 +160,13 @@ class GUI(QWidget):
 
         left_layout.addWidget(left_label)
         left_layout.addLayout(left_H_layout)
+        left_layout.setSpacing(0)
         middle_layout.addWidget(middle_label)
         middle_layout.addLayout(middle_H_layout)
+        middle_layout.setSpacing(0)
         right_layout.addWidget(right_label)
         right_layout.addLayout(right_H_layout)
+        right_layout.setSpacing(0)
 
         control_layout = QHBoxLayout()
         control_layout.addLayout(left_layout)
