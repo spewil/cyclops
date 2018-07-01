@@ -53,9 +53,12 @@ def convert_npy_to_tiff(npy_file, w, h):
                 print("Conversion complete.")
                 break
 
-def compute_roi(x0, x1, h, binning):
+def compute_centered_roi(w, h, binning):
     max_binned_width = MAX_CAM_X_RES // binning
     max_binned_height = MAX_CAM_Y_RES // binning
+
+    x0 = (max_binned_width - w) // 2
+    x1 = x0 + w
 
     if x1 - x0 > max_binned_width:
         raise ColorControlError("ROI width must be < ", max_binned_width)
@@ -118,7 +121,8 @@ def select_rectangular_roi(camera):
     x, y, w, h = rectangle
     mask = np.zeros(array.shape)
     mask[y:y+h, x:x+w] = 1
-    return mask.astype(np.bool)
+    soft_roi = x, y, x+w, y+h
+    return mask.astype(np.bool), soft_roi
 
 def restart_camera(camera, settings_dict):
     camera.close()
@@ -204,12 +208,9 @@ def run():
     '''
     w = (MAX_CAM_X_RES // settings_dict['binning']) // 2
     h = (MAX_CAM_Y_RES // settings_dict['binning']) // 2
-    roi_tuple = compute_roi(0, w, h, settings_dict['binning'])
-    x0, y0, x1, y1 = roi_tuple
-    w = x1 - x0 + 1
-    h = y1 - y0 + 1
-    print("computed roi: ", roi_tuple)
-    settings_dict['roi_tuple'] = roi_tuple
+    roi = compute_centered_roi(w,h,settings_dict['binning'])
+    print("computed roi: ", roi)
+    settings_dict['roi_tuple'] = roi
 
     camera = pco_camera.Camera(settings_dict['frame_rate_mHz'], settings_dict['exposure_time_ns'], settings_dict['binning'], settings_dict['binning'], *settings_dict['roi_tuple'])
 
@@ -220,21 +221,20 @@ def run():
         camera = restart_camera(camera, settings_dict)
 
     ##### soft ROI selection ######
-    set_ROI = input("would you like to set a soft ROI? y/n")
-    if set_ROI is 'y':
-        soft_ROI = True
+    set_soft_roi = input("would you like to set a soft ROI? y/n")
+    if set_soft_roi is 'y':
         roi_type = input("Polygonal or Rectangular ROI? p/r")
         if roi_type == 'p':
             selector = PolygonSelector(camera)
             mask = selector.mask
             camera = restart_camera(camera, settings_dict)
         elif roi_type == 'r':
-            mask = select_rectangular_roi(camera)
+            mask, soft_roi = select_rectangular_roi(camera)
             camera = restart_camera(camera, settings_dict)
         else:
             raise CameraSetupError("ROI type must be 'p' or 'r'.")
-    elif set_ROI is 'n':
-        soft_ROI = False
+    elif set_soft_roi is 'n':
+        soft_roi = None
     else:
         raise CameraSetupError("You must enter 'y' or 'n'.")
 
@@ -257,7 +257,10 @@ def run():
         settings_dict['duration'] = duration
         settings_dict['interval'] = interval
         mp.set_start_method('spawn')
-        p = mp.Process(target=raster.show_raster, args=(h, w, rows, cols, duration, interval))
+
+        # TODO FIX THIS!!!
+        p = mp.Process(target=raster.show_raster, args=(roi, soft_roi, rows, cols, duration, interval))
+
         p.start()
         p.join()
     elif control_type is 'n':
@@ -290,7 +293,7 @@ def run():
                     display = False
 
         if control_type is 'c':
-            if soft_ROI:
+            if soft_roi:
                 # retval, dst = cv.threshold(src, thresh, maxval, type[, dst])
                 control[mask] = 255 * ((array[mask] >= threshold).astype(float))
             else:

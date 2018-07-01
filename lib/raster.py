@@ -41,17 +41,24 @@ def define_grid(size_data,shape_grid):
         indices.append(curr_indices)
     return indices
 
-def show_raster(height, width, rows, cols, duration, interval):
+def show_raster(roi, soft_roi, rows, cols, duration, interval):
+    x0, y0, x1, y1 = roi
+    sx0, sy0, sx1, sy1 = soft_roi
+    width = x1 - x0 + 1
+    height = y1 - y0 + 1
+    soft_width = sx1 - sx0 + 1
+    soft_height = sy1 - sy0 + 1
+
     if cols > width or rows > height:
         raise Exception("Too many rows or columns.")
 
-    idxs = define_grid((height,width),(rows,cols))
+    idxs = define_grid((soft_height,soft_width),(rows,cols))
 
     masks = []
     mask = np.zeros((height, width))
     for r in range(rows):
         for c in range(cols):
-            mask[idxs[0][r][0]:idxs[0][r][1],idxs[1][c][0]:idxs[1][c][1]] = 1
+            mask[idxs[0][r][0]+sx0:idxs[0][r][1]+sx0,idxs[1][c][0]+sy0:idxs[1][c][1]+sy0] = 1
             masks.append(mask.astype(np.bool))
             mask = np.zeros((height, width))
 
@@ -75,3 +82,5 @@ def show_raster(height, width, rows, cols, duration, interval):
     cv2.destroyAllWindows()
 
     return mask_order
+
+show_raster((0,0,500,500), (200,200,300,300), 10, 10, 1, 0.2)

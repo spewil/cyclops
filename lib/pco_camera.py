@@ -201,3 +201,7 @@ class Camera:
         #
         # error = self.__cam.reset_lib()
         # print("reset lib:", self.__cam.get_error_text(error))
+
+    def restart(self):
+        self.close()
+        self.open()

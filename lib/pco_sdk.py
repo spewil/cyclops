@@ -12,12 +12,9 @@ class sdk:
     recorder_handle = C.c_void_p(0)
 
     def __init__(self):
-
-        # self.SC2_Cam = C.windll.LoadLibrary("./dll/old/SC2_Cam.dll")
         self.SC2_Cam = C.windll.LoadLibrary("./dll/SC2_Cam.dll")
         # self.SC2_Cam = C.windll.LoadLibrary("C:/Program Files (x86)/Digital Camera Toolbox/pco.sdk/bin64/SC2_Cam.dll")
         self.SC2_Cam.PCO_ResetLib()
-        # self.PCO_Recorder = C.windll.LoadLibrary("./dll/PCO_Recorder.dll")
 
     def get_buffer_status(self, buf_num):
         self.SC2_Cam.PCO_GetBufferStatus.argtypes = [wintypes.HANDLE, wintypes.SHORT, C.POINTER(C.c_uint32), C.POINTER(C.c_uint32)]
