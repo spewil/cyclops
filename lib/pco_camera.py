@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 
-import sys
 import win32event
 
 import ctypes
@@ -9,16 +8,18 @@ from collections import deque
 from cffi import FFI
 
 try:
-    import pco_sdk
-except ImportError:
     from lib import pco_sdk
+except:
+    import pco_sdk
 
 MAX_CAM_X_RES = 2560
 MAX_CAM_Y_RES = 2160
-
 NUM_BUFFERS = 4
-
 ffi = FFI()
+
+# TODO:
+# catch errors if something goes wrong (don't just print them)
+# return verbose if 'de-bug' mode is on
 
 class PcoCamError(Exception):
     pass

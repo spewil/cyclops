@@ -3,6 +3,9 @@
 import ctypes as C
 from ctypes import wintypes
 
+
+# TODO: remove all magic numbers
+
 class sdk:
 
     SC2_Cam = 0
@@ -182,7 +185,6 @@ class sdk:
         error = self.SC2_Cam.PCO_SetImageParameters(self.camera_handle, wxres, wyres, dwFlags, param, ilen)
         return error
 
-    # DATA DEPTH IS 16
     def set_transfer_parameters_auto(self):
         self.SC2_Cam.PCO_SetTransferParametersAuto.argtypes = [C.c_void_p, C.POINTER(C.c_void_p), C.c_int]
         buffer = C.c_void_p(0)
