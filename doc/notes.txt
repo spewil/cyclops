@@ -178,6 +178,20 @@ get_image is overwriting the memory block
 word  = 16 bits
 dword = 32 bits
 
+~~~
 
-
+warning: CRLF will be replaced by LF in doc/notes.txt.
+The file will have its original line endings in your working directory.
+warning: CRLF will be replaced by LF in lib/Nonesettings.json.
+The file will have its original line endings in your working directory.
+warning: CRLF will be replaced by LF in lib/default.json.
+The file will have its original line endings in your working directory.
+warning: CRLF will be replaced by LF in lib/pco_camera.py.
+The file will have its original line endings in your working directory.
+warning: CRLF will be replaced by LF in lib/pco_sdk.py.
+The file will have its original line endings in your working directory.
+warning: CRLF will be replaced by LF in lib/recorder.py.
+The file will have its original line endings in your working directory.
+warning: CRLF will be replaced by LF in lib/settings.json.
+The file will have its original line endings in your working directory.
 		
