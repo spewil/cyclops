@@ -263,6 +263,9 @@ class Cyclops(QMainWindow):
         else:
             pass
 
+    def closeEvent(self, event):
+        self.close_gui()
+
     def close_gui(self):
         with open("settings.json", "w") as fp:
             json.dump(self.settings_dict, fp, sort_keys=True, indent=4)
